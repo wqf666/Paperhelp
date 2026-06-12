@@ -8,12 +8,12 @@ pub fn get_sidecar_port(state: tauri::State<'_, SidecarState>) -> u16 {
 
 /// Check whether the sidecar is healthy by hitting its `/health` endpoint.
 #[tauri::command]
-pub async fn get_sidecar_status(state: tauri::State<'_, SidecarState>) -> String {
-    let port = *state.port.lock().unwrap();
+pub async fn get_sidecar_status(state: tauri::State<'_, SidecarState>) -> Result<String, String> {
+    let port = *state.port.lock().map_err(|e| e.to_string())?;
     let url = format!("http://127.0.0.1:{}/health", port);
     match reqwest::get(&url).await {
-        Ok(resp) if resp.status().is_success() => "running".to_string(),
-        _ => "stopped".to_string(),
+        Ok(resp) if resp.status().is_success() => Ok("running".to_string()),
+        _ => Ok("stopped".to_string()),
     }
 }
 

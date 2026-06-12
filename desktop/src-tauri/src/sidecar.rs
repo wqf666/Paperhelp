@@ -150,32 +150,31 @@ pub fn start_sidecar(app: &tauri::App) -> Result<SidecarState, Box<dyn std::erro
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
-    // 4. Forward sidecar output to logs on a background thread.
-    //    `rx` is a `std::sync::mpsc::Receiver<CommandEvent>`; `recv()` blocks
-    //    until an event arrives or the sender is dropped (process terminated).
-    std::thread::spawn(move || {
-        let rx = rx;
+    // 4. Forward sidecar output to logs using Tauri's async runtime.
+    //    In Tauri v2 shell plugin, `rx.recv()` returns a Future.
+    tauri::async_runtime::spawn(async move {
+        let mut rx = rx;
         loop {
-            match rx.recv() {
-                Ok(CommandEvent::Stdout(line)) => {
+            match rx.recv().await {
+                Some(CommandEvent::Stdout(line)) => {
                     info!("[sidecar stdout] {}", String::from_utf8_lossy(&line));
                 }
-                Ok(CommandEvent::Stderr(line)) => {
+                Some(CommandEvent::Stderr(line)) => {
                     warn!("[sidecar stderr] {}", String::from_utf8_lossy(&line));
                 }
-                Ok(CommandEvent::Terminated(payload)) => {
+                Some(CommandEvent::Terminated(payload)) => {
                     info!(
                         "[sidecar] Process terminated (exit code: {:?}, signal: {:?})",
                         payload.code, payload.signal
                     );
                     break;
                 }
-                Ok(CommandEvent::Error(err)) => {
+                Some(CommandEvent::Error(err)) => {
                     error!("[sidecar] Error event: {}", err);
                     break;
                 }
-                Ok(_) => {}
-                Err(_) => {
+                Some(_) => {}
+                None => {
                     // Channel closed – sidecar process ended
                     info!("[sidecar] Event channel closed");
                     break;

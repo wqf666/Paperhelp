@@ -34,7 +34,7 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 // Graceful shutdown: tell sidecar to stop
                 let state = app_handle.state::<sidecar::SidecarState>();
-                sidecar::stop_sidecar(state);
+                sidecar::stop_sidecar(&state);
                 api.prevent_exit();
                 // Actually exit after cleanup
                 std::thread::spawn(|| {
