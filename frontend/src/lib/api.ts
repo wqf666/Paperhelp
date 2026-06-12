@@ -17,7 +17,24 @@ import type {
   ExportRecord,
 } from './types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// In desktop mode, the port is injected by Tauri as window.__PAPERHELP_PORT__
+declare global {
+  interface Window {
+    __PAPERHELP_PORT__?: number;
+  }
+}
+
+function getApiBase(): string {
+  // Priority: Tauri injected port > env var (build-time) > default
+  if (typeof window !== 'undefined' && window.__PAPERHELP_PORT__) {
+    return `http://127.0.0.1:${window.__PAPERHELP_PORT__}`;
+  }
+  if (typeof window !== 'undefined' && (window as any).__NEXT_PUBLIC_API_URL__) {
+    return (window as any).__NEXT_PUBLIC_API_URL__;
+  }
+  // Build-time env (Next.js static export) or dev default
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+}
 
 class ApiError extends Error {
   constructor(
@@ -31,7 +48,7 @@ class ApiError extends Error {
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const fullUrl = `${API_BASE}${url}`;
+  const fullUrl = `${getApiBase()}${url}`;
 
   const defaultHeaders: HeadersInit = {
     'Content-Type': 'application/json',
@@ -315,6 +332,32 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ section_ids: sectionIds }),
     }),
+
+  // ─── Settings ───
+  getSettings: () =>
+    request<any>('/settings'),
+
+  updateSettings: (data: any) =>
+    request<any>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // ─── Backup ───
+  exportProjectBackup: (projectId: number) =>
+    request<any>(`/backup/projects/${projectId}/export`, {
+      method: 'POST',
+    }),
+
+  importProjectBackup: (formData: FormData) =>
+    request<any>('/backup/import', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    }),
+
+  getBackupInfo: (projectId: number) =>
+    request<any>(`/backup/projects/${projectId}/info`),
 };
 
 export { ApiError };

@@ -11,6 +11,10 @@ backend/.env
 
 # Test artifacts
 backend/test_research_agent.db
+backend/test_research_agent.db-shm
+backend/test_research_agent.db-wal
+backend/test_output*.txt
+backend/test_stderr.txt
 backend/.pytest_cache/
 **/.pytest_cache/
 **/__pycache__/
@@ -47,9 +51,29 @@ frontend/tsconfig.tsbuildinfo
 # Process / planning documents (not part of deliverables)
 MVP3_TECHNICAL_PLAN.md
 MVP4_TECHNICAL_PLAN.md
+DESKTOP_TECHNICAL_PLAN.md
 
 # QoderWork scratch output
 outputs/
+
+# ===========================
+# Tauri / Desktop App
+# ===========================
+
+# Rust build output (very large)
+desktop/src-tauri/target/
+
+# Sidecar binaries (built via build_sidecar.bat, not committed)
+desktop/src-tauri/binaries/*.exe
+desktop/src-tauri/binaries/*.app
+
+# Next.js static export
+frontend/out/
+
+# PyInstaller artifacts
+backend/dist/
+backend/build/
+backend/*.pyc
 
 # ===========================
 # OS / IDE

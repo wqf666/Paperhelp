@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 50
     EXPORT_PATH: str = "./exports"
     LATEX_COMPILER: str = "pdflatex"
+    PORT: int = Field(default=18080)
 
     class Config:
         env_file = ".env"

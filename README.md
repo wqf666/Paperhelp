@@ -21,6 +21,16 @@ Backend (Python FastAPI)
    MySQL / MariaDB
 ```
 
+```
+Desktop App (Tauri v2)
+├── WebView (Next.js 静态导出)
+├── Rust 后端 (Sidecar 管理 + 系统托盘)
+└── FastAPI Sidecar (PyInstaller 打包)
+    ├── SQLite (本地数据库)
+    ├── MockLLM / DeepSeekLLM
+    └── 本地文件系统
+```
+
 ## 快速开始
 
 ### 前置条件
@@ -93,6 +103,42 @@ MOCK_LLM=false
 LLM_API_KEY=your-deepseek-api-key
 LLM_BASE_URL=https://api.deepseek.com/v1
 LLM_MODEL=deepseek-chat
+```
+
+### 桌面版构建
+
+#### 前置条件
+
+- Rust 1.70+
+- Node.js 18+
+- Python 3.11+
+
+#### 一键构建
+
+```bash
+build-scripts\build_all.bat
+```
+
+该脚本依次构建 FastAPI Sidecar 和 Tauri App，最终生成安装包。
+
+#### 分步构建
+
+如需单独构建某个组件：
+
+```bash
+# 1. 构建 FastAPI Sidecar (PyInstaller 打包)
+build-scripts\build_sidecar.bat
+
+# 2. 构建 Tauri App (依赖 Sidecar 产物)
+build-scripts\build_app.bat
+```
+
+#### 安装包位置
+
+构建完成后，NSIS 安装包位于：
+
+```
+desktop/src-tauri/target/release/bundle/nsis/
 ```
 
 ## 功能模块
@@ -209,11 +255,23 @@ LLM_MODEL=deepseek-chat
 | DELETE | /manuscript-sections/{id} | 删除章节 |
 | PUT | /projects/{id}/manuscript/sections/reorder | 章节排序 |
 
+### Desktop 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /settings | 获取当前设置（API Key 脱敏显示） |
+| PUT | /settings | 更新设置（API Key、模型模式等） |
+| POST | /settings/reload | 重新加载配置 |
+| POST | /shutdown | 优雅关闭（桌面模式） |
+| POST | /backup/projects/{id}/export | 导出项目备份 (.papb) |
+| POST | /backup/import | 导入项目备份 |
+| GET | /backup/projects/{id}/info | 项目备份信息 |
+
 ## 运行测试
 
 ```bash
 cd backend
-pytest tests/ -v
+pytest tests/ -v  # 155 个测试 (含桌面版 18 个)
 ```
 
 ## 项目结构
@@ -234,7 +292,7 @@ research-agent/
 │   │   ├── templates/latex/     # LaTeX Jinja2 模板 (4 套)
 │   │   ├── storage/             # 文件存储 (LocalStorage)
 │   │   └── compliance/          # 合规检查 (7 类检测 + AI 声明生成)
-│   ├── tests/                   # 后端测试 (137 个测试)
+│   ├── tests/                   # 后端测试 (155 个测试)
 │   ├── alembic/                 # 数据库迁移
 │   └── requirements.txt
 ├── frontend/
@@ -243,15 +301,28 @@ research-agent/
 │   │   ├── components/          # React 组件 (12 个组件)
 │   │   └── lib/                 # 工具函数和类型 (19 个接口)
 │   └── package.json
+├── desktop/                     # Tauri 桌面 App
+│   └── src-tauri/
+│       ├── src/                 # Rust 代码 (sidecar 管理、托盘、commands)
+│       ├── tauri.conf.json
+│       ├── Cargo.toml
+│       ├── capabilities/
+│       ├── binaries/            # Sidecar 可执行文件
+│       └── icons/
+├── build-scripts/               # 构建脚本
+│   ├── build_all.bat
+│   ├── build_sidecar.bat
+│   └── build_app.bat
 └── README.md
 ```
 
 ## 开发路线
 
-- **MVP 1**：核心骨架 + Mock LLM + 完整前后端
-- **MVP 2**：PDF 解析 + 证据追溯 + 方法版本 + 实验结果分析 + 审稿模拟 + 创新性检查
-- **MVP 3**（当前）：引用管理 + Word/LaTeX 导出 + 模板系统 + Cover Letter + Response Letter + AI 声明
-- **MVP 4**：多用户协作 + 引用完整性检查 + 版本联动 + RAG 向量检索
+- **MVP 1**（已完成）：核心骨架 + Mock LLM + 完整前后端
+- **MVP 2**（已完成）：PDF 解析 + 证据追溯 + 方法版本 + 实验结果分析 + 审稿模拟 + 创新性检查
+- **MVP 3**（已完成）：引用管理 + Word/LaTeX 导出 + 模板系统 + Cover Letter + Response Letter + AI 声明
+- **Desktop**（当前）：Tauri v2 桌面 App + SQLite + 本地设置 + 项目备份
+- **MVP 4**：Research Skills + 健康仪表盘 + 导师反馈
 
 ## 合规规则
 
@@ -262,6 +333,29 @@ research-agent/
 5. 证据和数据来源必须可追溯 — PaperCard 保留 evidence_spans
 6. 导出前完整性校验 — 检查标题、摘要、章节内容、引用键是否齐全
 7. AI 使用声明自动嵌入 — 所有导出文档自动包含 AI Usage Disclosure
+
+## 桌面版使用
+
+### 安装
+
+下载 `.exe` 安装包，双击安装。无需安装 Python、Node.js 或 MySQL。
+
+### 首次启动
+
+1. 打开 App，默认为 Mock 模式（离线演示）
+2. 点击右上角设置图标进入设置页
+3. 输入 DeepSeek API Key，关闭 Mock 模式
+4. 返回创建项目，开始使用
+
+### 数据位置
+
+- Windows: `%APPDATA%\Paperhelp\`
+- macOS: `~/Library/Application Support/Paperhelp/`
+- Linux: `~/.local/share/paperhelp/`
+
+### 备份与恢复
+
+在项目详情页使用"备份管理"功能，可导出/导入 `.papb` 格式的完整项目备份。
 
 ## License
 

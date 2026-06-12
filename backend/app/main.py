@@ -1,6 +1,10 @@
 """FastAPI application entry point for the Research Paper Writing Agent."""
 
 import logging
+import os
+import threading
+import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,8 +12,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import projects, papers, ideas, experiments, manuscript
 from app.routers import chunks, method_versions, experiment_results, reviewer, sections
 from app.routers import citations, templates, export, converter
+from app.routers import settings as settings_router
+from app.routers import backup as backup_router
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager: startup and shutdown."""
+    # Startup: seed built-in export templates
+    from app.database import SessionLocal
+    from app.services.template_service import TemplateService
+
+    db = SessionLocal()
+    try:
+        TemplateService().seed_builtin_templates(db)
+    except Exception as exc:
+        logger.warning(f"Failed to seed built-in templates: {exc}")
+    finally:
+        db.close()
+
+    yield
+    # Shutdown: nothing needed here
+
 
 app = FastAPI(
     title="\u79d1\u7814\u8bba\u6587\u5199\u4f5c Agent API",
@@ -27,12 +53,18 @@ app = FastAPI(
         "proper attribution."
     ),
     version="0.1.0",
+    lifespan=lifespan,
 )
 
-# CORS -- allow all origins for development
+# CORS -- restricted to local / Tauri origins for desktop mode
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+        "tauri://localhost",
+        "http://tauri.localhost",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,21 +85,18 @@ app.include_router(citations.router)
 app.include_router(templates.router)
 app.include_router(export.router)
 app.include_router(converter.router)
+app.include_router(settings_router.router)
+app.include_router(backup_router.router)
 
 
-@app.on_event("startup")
-def seed_builtin_templates():
-    """Seed built-in export templates on application startup."""
-    from app.database import SessionLocal
-    from app.services.template_service import TemplateService
-
-    db = SessionLocal()
-    try:
-        TemplateService().seed_builtin_templates(db)
-    except Exception as exc:
-        logger.warning(f"Failed to seed built-in templates: {exc}")
-    finally:
-        db.close()
+@app.post("/shutdown", tags=["system"])
+def shutdown():
+    """Graceful shutdown endpoint for desktop mode."""
+    def _delayed_shutdown():
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_delayed_shutdown, daemon=True).start()
+    return {"status": "shutting_down"}
 
 
 @app.get("/health", tags=["system"])
