@@ -26,8 +26,8 @@ def upgrade() -> None:
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('target_field', sa.String(length=255), nullable=True),
     sa.Column('target_venue', sa.String(length=255), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_projects_id'), 'projects', ['id'], unique=False)
@@ -43,8 +43,8 @@ def upgrade() -> None:
     sa.Column('compliance_details', sa.JSON(), nullable=True),
     sa.Column('method_version', sa.Integer(), nullable=False),
     sa.Column('unresolved_issues', sa.JSON(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -60,7 +60,7 @@ def upgrade() -> None:
     sa.Column('abstract', sa.Text(), nullable=True),
     sa.Column('file_path', sa.String(length=1000), nullable=True),
     sa.Column('status', sa.Enum('uploaded', 'parsing', 'parsed', 'analyzing', 'analyzed', 'error', name='paperstatus'), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -77,7 +77,7 @@ def upgrade() -> None:
     sa.Column('feasibility_score', sa.Float(), nullable=True),
     sa.Column('risk_level', sa.String(length=50), nullable=True),
     sa.Column('experiment_plan_summary', sa.Text(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -93,7 +93,7 @@ def upgrade() -> None:
     sa.Column('metrics', sa.JSON(), nullable=True),
     sa.Column('baselines', sa.JSON(), nullable=True),
     sa.Column('risk_and_fallbacks', sa.JSON(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['idea_id'], ['research_ideas.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('idea_id')
@@ -112,7 +112,7 @@ def upgrade() -> None:
     sa.Column('main_results', sa.JSON(), nullable=True),
     sa.Column('reproducibility', sa.Text(), nullable=True),
     sa.Column('evidence_spans', sa.JSON(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['paper_id'], ['papers.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('paper_id')

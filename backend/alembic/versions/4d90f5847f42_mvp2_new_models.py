@@ -35,7 +35,7 @@ def upgrade() -> None:
     sa.Column('suggested_experiments', sa.JSON(), nullable=True),
     sa.Column('overall_score', sa.Float(), nullable=True),
     sa.Column('recommendation', sa.String(length=50), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -51,7 +51,7 @@ def upgrade() -> None:
     sa.Column('based_on_idea_id', sa.Integer(), nullable=True),
     sa.Column('parent_version_id', sa.Integer(), nullable=True),
     sa.Column('status', sa.String(length=50), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['based_on_idea_id'], ['research_ideas.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['parent_version_id'], ['method_versions.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
@@ -67,7 +67,7 @@ def upgrade() -> None:
     sa.Column('start_page', sa.Integer(), nullable=True),
     sa.Column('end_page', sa.Integer(), nullable=True),
     sa.Column('chunk_type', sa.String(length=50), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['paper_id'], ['papers.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -83,7 +83,7 @@ def upgrade() -> None:
     sa.Column('source_section', sa.String(length=500), nullable=True),
     sa.Column('source_text_span', sa.Text(), nullable=True),
     sa.Column('confidence', sa.Float(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['chunk_id'], ['paper_chunks.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['paper_card_id'], ['paper_cards.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['paper_id'], ['papers.id'], ondelete='CASCADE'),
@@ -102,7 +102,7 @@ def upgrade() -> None:
     sa.Column('file_path', sa.String(length=1000), nullable=True),
     sa.Column('upload_format', sa.String(length=50), nullable=True),
     sa.Column('status', sa.String(length=50), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['experiment_plan_id'], ['experiment_plans.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['method_version_id'], ['method_versions.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
@@ -118,8 +118,8 @@ def upgrade() -> None:
     sa.Column('method_version_id', sa.Integer(), nullable=True),
     sa.Column('status', sa.String(length=50), nullable=True),
     sa.Column('sort_order', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['manuscript_state_id'], ['manuscript_states.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['method_version_id'], ['method_versions.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')
@@ -137,14 +137,15 @@ def upgrade() -> None:
     sa.Column('recommendations', sa.JSON(), nullable=True),
     sa.Column('compliance_status', sa.String(length=50), nullable=True),
     sa.Column('compliance_details', sa.JSON(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['experiment_result_id'], ['experiment_results.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('experiment_result_id')
     )
     op.create_index(op.f('ix_results_analyses_id'), 'results_analyses', ['id'], unique=False)
     op.add_column('manuscript_states', sa.Column('active_method_version_id', sa.Integer(), nullable=True))
-    op.create_foreign_key(None, 'manuscript_states', 'method_versions', ['active_method_version_id'], ['id'], ondelete='SET NULL')
+    with op.batch_alter_table('manuscript_states') as batch_op:
+        batch_op.create_foreign_key('fk_manuscript_states_active_method_version_id', 'method_versions', ['active_method_version_id'], ['id'], ondelete='SET NULL')
     op.add_column('papers', sa.Column('chunk_count', sa.Integer(), nullable=True))
     op.add_column('papers', sa.Column('pdf_parse_status', sa.String(length=50), nullable=True))
     op.add_column('research_ideas', sa.Column('differentiation_check', sa.JSON(), nullable=True))
@@ -156,7 +157,8 @@ def downgrade() -> None:
     op.drop_column('research_ideas', 'differentiation_check')
     op.drop_column('papers', 'pdf_parse_status')
     op.drop_column('papers', 'chunk_count')
-    op.drop_constraint(None, 'manuscript_states', type_='foreignkey')
+    with op.batch_alter_table('manuscript_states') as batch_op:
+        batch_op.drop_constraint('fk_manuscript_states_active_method_version_id', type_='foreignkey')
     op.drop_column('manuscript_states', 'active_method_version_id')
     op.drop_index(op.f('ix_results_analyses_id'), table_name='results_analyses')
     op.drop_table('results_analyses')
