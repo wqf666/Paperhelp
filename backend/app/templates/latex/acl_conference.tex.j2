@@ -1,0 +1,60 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{acl}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{hyperref}
+
+\title{ {{ title }} }
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+{{ abstract }}
+\end{abstract}
+
+{% for section in sections %}
+\section{ {{ section.title }} }
+{{ section.content }}
+
+{% for figure in section.figures %}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\columnwidth]{ {{ figure.file_path | default("figures/placeholder") }} }
+\caption{ {{ figure.caption | default("") }} }
+\label{fig:{{ figure.id | default("fig" ~ loop.index) }} }
+\end{figure}
+{% endfor %}
+
+{% for table in section.tables %}
+\begin{table}[htbp]
+\centering
+\caption{ {{ table.caption | default("") }} }
+\label{tab:{{ table.id | default("tab" ~ loop.index) }} }
+\begin{tabular}{| {{ "c|" * table.col_count }} }
+\hline
+{% for row in table.rows %}
+{{ " & ".join(row | map("string") | list) }} \\
+\hline
+{% endfor %}
+\end{tabular}
+\end{table}
+{% endfor %}
+
+{% for eq in section.equations %}
+\begin{equation}
+\label{eq:{{ eq.id | default("eq" ~ loop.index) }} }
+{{ eq.latex | default("") }}
+\end{equation}
+{% endfor %}
+
+{% endfor %}
+
+\bibliographystyle{ {{ style_config.bibliography_style | default("acl_natbib") }} }
+\bibliography{references}
+
+\input{ai_disclosure}
+
+\end{document}
