@@ -1,20 +1,35 @@
+use std::sync::Arc;
+
 use crate::sidecar::SidecarState;
 
 /// Return the port number that the sidecar is listening on.
+/// Returns 0 if the sidecar has not started yet.
 #[tauri::command]
-pub fn get_sidecar_port(state: tauri::State<'_, SidecarState>) -> u16 {
+pub fn get_sidecar_port(state: tauri::State<'_, Arc<SidecarState>>) -> u16 {
     *state.port.lock().unwrap()
 }
 
 /// Check whether the sidecar is healthy by hitting its `/health` endpoint.
+/// Returns "starting" if the sidecar process hasn't finished booting yet.
 #[tauri::command]
-pub async fn get_sidecar_status(state: tauri::State<'_, SidecarState>) -> Result<String, String> {
+pub async fn get_sidecar_status(state: tauri::State<'_, Arc<SidecarState>>) -> Result<String, String> {
+    let ready = *state.ready.lock().map_err(|e| e.to_string())?;
+    if !ready {
+        return Ok("starting".to_string());
+    }
     let port = *state.port.lock().map_err(|e| e.to_string())?;
     let url = format!("http://127.0.0.1:{}/health", port);
     match reqwest::get(&url).await {
         Ok(resp) if resp.status().is_success() => Ok("running".to_string()),
         _ => Ok("stopped".to_string()),
     }
+}
+
+/// Check whether the sidecar has finished starting and is ready to serve.
+/// The frontend polls this command to know when to dismiss the loading screen.
+#[tauri::command]
+pub fn check_sidecar_ready(state: tauri::State<'_, Arc<SidecarState>>) -> bool {
+    *state.ready.lock().unwrap()
 }
 
 /// Open the Paperhelp data directory in the system file manager.

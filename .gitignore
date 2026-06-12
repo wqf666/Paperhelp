@@ -67,6 +67,9 @@ desktop/src-tauri/target/
 desktop/src-tauri/binaries/*.exe
 desktop/src-tauri/binaries/*.app
 
+# Tauri auto-generated schemas
+desktop/src-tauri/gen/
+
 # Next.js static export
 frontend/out/
 
@@ -88,3 +91,12 @@ Thumbs.db
 .vscode/
 *.sublime-project
 *.sublime-workspace
+
+# Windows artifacts
+nul
+*/nul
+
+# Temporary / debug files
+test_output.txt
+cargo_check*.txt
+*.log

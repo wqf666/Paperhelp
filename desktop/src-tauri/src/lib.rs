@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use tauri::Manager;
 
 mod commands;
@@ -13,18 +14,46 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            // Start the FastAPI sidecar
-            let sidecar_handle = sidecar::start_sidecar(app)?;
-            app.manage(sidecar_handle);
+            // Create an initial (empty) sidecar state so setup completes
+            // immediately and the window can render. The actual sidecar process
+            // is started on a background thread below.
+            let state = Arc::new(sidecar::SidecarState::new_initial());
+            app.manage(state.clone());
 
             // Set up system tray menu
             tray::setup_tray(app)?;
+
+            // Start the sidecar in a background thread so the UI is NOT blocked.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                log::info!("Background sidecar startup thread started");
+                match sidecar::start_sidecar(&handle) {
+                    Ok((port, child)) => {
+                        let s = handle.state::<Arc<sidecar::SidecarState>>();
+                        *s.port.lock().unwrap() = port;
+                        *s.child.lock().unwrap() = Some(child);
+                        *s.ready.lock().unwrap() = true;
+                        log::info!(
+                            "Sidecar started successfully on port {}, UI should update",
+                            port
+                        );
+                    }
+                    Err(e) => {
+                        log::error!("Sidecar failed to start: {}", e);
+                        log::error!(
+                            "The app UI will remain visible but backend features \
+                             will be unavailable. Check logs for details."
+                        );
+                    }
+                }
+            });
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_sidecar_port,
             commands::get_sidecar_status,
+            commands::check_sidecar_ready,
             commands::open_data_dir,
             commands::get_app_version,
         ])
@@ -33,7 +62,7 @@ pub fn run() {
         .run(|app_handle, event| match event {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 // Graceful shutdown: tell sidecar to stop
-                let state = app_handle.state::<sidecar::SidecarState>();
+                let state = app_handle.state::<Arc<sidecar::SidecarState>>();
                 sidecar::stop_sidecar(&state);
                 api.prevent_exit();
                 // Actually exit after cleanup

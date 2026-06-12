@@ -22,6 +22,18 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def get_bundle_dir():
+    """Get the directory where bundled data files (alembic/, templates/) live.
+
+    In a PyInstaller --onefile bundle, data files are extracted to a temporary
+    directory accessible via ``sys._MEIPASS``.  In development mode, data files
+    are simply in the project directory (same as base_dir).
+    """
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        return sys._MEIPASS
+    return get_base_dir()
+
+
 def setup_desktop_env(base_dir: str):
     """Set up environment variables for desktop mode."""
     # Import desktop config
@@ -58,23 +70,32 @@ def run_migrations(base_dir: str):
 
 def main():
     base_dir = get_base_dir()
+    bundle_dir = get_bundle_dir()
     logger.info(f"Base directory: {base_dir}")
+    logger.info(f"Bundle directory: {bundle_dir}")
+
+    # Ensure the base dir is in sys.path so 'app' package can be found
+    if base_dir not in sys.path:
+        sys.path.insert(0, base_dir)
 
     # Setup desktop environment
     setup_desktop_env(base_dir)
 
-    # Run migrations
-    run_migrations(base_dir)
+    # Run migrations (alembic files live in the bundle dir)
+    run_migrations(bundle_dir)
 
     # Get port
     port = int(os.environ.get('PORT', '18080'))
 
     logger.info(f"Starting FastAPI server on 127.0.0.1:{port}")
 
-    # Start uvicorn
+    # Import the app directly (not via string) so PyInstaller includes it
+    from app.main import app as fastapi_app
+
+    # Start uvicorn with the app object directly (avoids dynamic import issues)
     import uvicorn
     uvicorn.run(
-        'app.main:app',
+        fastapi_app,
         host='127.0.0.1',
         port=port,
         log_level='info',

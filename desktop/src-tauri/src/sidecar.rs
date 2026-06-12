@@ -6,9 +6,26 @@ use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
 /// Shared state for the FastAPI sidecar process.
+///
+/// The state is created immediately (with `ready = false`) so the Tauri setup
+/// phase can complete and the window can render. The actual sidecar process is
+/// started on a background thread; once it is healthy, `ready` is set to `true`
+/// and `port` / `child` are populated.
 pub struct SidecarState {
     pub port: Mutex<u16>,
     pub child: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
+    pub ready: Mutex<bool>,
+}
+
+impl SidecarState {
+    /// Create an initial (empty) state. The sidecar is NOT started yet.
+    pub fn new_initial() -> Self {
+        Self {
+            port: Mutex::new(0),
+            child: Mutex::new(None),
+            ready: Mutex::new(false),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -68,7 +85,7 @@ fn prepare_data_dirs() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
 
 /// Poll `GET /health` on the sidecar until it responds 2xx or `timeout`
 /// elapses. Uses `reqwest::blocking` so it must NOT be called from an async
-/// context.
+/// context (it runs on a dedicated OS thread, which is fine).
 fn wait_for_health(port: u16, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
     let url = format!("http://127.0.0.1:{}/health", port);
     let start = Instant::now();
@@ -103,17 +120,18 @@ fn wait_for_health(port: u16, timeout: Duration) -> Result<(), Box<dyn std::erro
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Start the FastAPI sidecar process.
+/// Start the FastAPI sidecar process (called from a background thread).
 ///
 /// 1. Picks an available port (18080-18089).
 /// 2. Prepares the data / db / storage / export directories.
 /// 3. Spawns the sidecar with the required environment variables.
-/// 4. Forwards stdout / stderr to the `log` crate on a background thread.
+/// 4. Forwards stdout / stderr to the `log` crate on a background task.
 /// 5. Blocks until the `/health` endpoint responds (up to 30 s).
 ///
-/// Returns a [`SidecarState`] that the caller should register via
-/// `app.manage()`.
-pub fn start_sidecar(app: &tauri::App) -> Result<SidecarState, Box<dyn std::error::Error>> {
+/// Returns the port number and the child process handle on success.
+pub fn start_sidecar(
+    handle: &tauri::AppHandle,
+) -> Result<(u16, tauri_plugin_shell::process::CommandChild), Box<dyn std::error::Error>> {
     // 1. Port
     let port = find_available_port(18080, 10)?;
     let port_str = port.to_string();
@@ -137,8 +155,8 @@ pub fn start_sidecar(app: &tauri::App) -> Result<SidecarState, Box<dyn std::erro
         port, db_url, storage_path, export_path, mock_llm
     );
 
-    // 3. Spawn
-    let (rx, child) = app
+    // 3. Spawn – uses AppHandle which implements Manager + ShellExt
+    let (rx, child) = handle
         .shell()
         .sidecar("fastapi-server")
         .map_err(|e| format!("Failed to create sidecar command: {}", e))?
@@ -183,7 +201,7 @@ pub fn start_sidecar(app: &tauri::App) -> Result<SidecarState, Box<dyn std::erro
         }
     });
 
-    // 5. Health-check (blocking – this runs during setup, before the window is shown)
+    // 5. Health-check (blocking – runs on the background thread, does NOT block UI)
     if let Err(e) = wait_for_health(port, Duration::from_secs(30)) {
         error!("Sidecar health check failed: {} – killing process", e);
         let _ = child.kill();
@@ -191,11 +209,7 @@ pub fn start_sidecar(app: &tauri::App) -> Result<SidecarState, Box<dyn std::erro
     }
 
     info!("Sidecar is running on port {}", port);
-
-    Ok(SidecarState {
-        port: Mutex::new(port),
-        child: Mutex::new(Some(child)),
-    })
+    Ok((port, child))
 }
 
 /// Attempt a graceful shutdown of the sidecar.
@@ -204,6 +218,12 @@ pub fn start_sidecar(app: &tauri::App) -> Result<SidecarState, Box<dyn std::erro
 /// 2. Poll `/health` for up to 5 seconds waiting for it to stop.
 /// 3. If it is still alive, force-kill the child process.
 pub fn stop_sidecar(state: &SidecarState) {
+    let ready = *state.ready.lock().unwrap();
+    if !ready {
+        info!("Sidecar was never started, nothing to stop");
+        return;
+    }
+
     let port = *state.port.lock().unwrap();
     info!("Stopping sidecar on port {}...", port);
 
