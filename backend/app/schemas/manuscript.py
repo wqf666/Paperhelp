@@ -3,6 +3,8 @@ from typing import List, Dict, Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.manuscript_section import ManuscriptSectionResponse
+
 
 class OutlineGenerateRequest(BaseModel):
     additional_instructions: str = ""
@@ -22,9 +24,9 @@ class ManuscriptStateResponse(BaseModel):
     compliance_details: List[Dict[str, Any]] = []
     method_version: int = 1
     active_method_version_id: Optional[int] = None
-    export_status: str = "none"
+    export_status: Optional[str] = "none"
     template_id: Optional[int] = None
-    sections: list = []
+    sections: List[ManuscriptSectionResponse] = []
     unresolved_issues: list[str] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

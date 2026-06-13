@@ -14,6 +14,7 @@ from app.routers import chunks, method_versions, experiment_results, reviewer, s
 from app.routers import citations, templates, export, converter
 from app.routers import settings as settings_router
 from app.routers import backup as backup_router
+from app.routers import refine as refine_router
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ app.include_router(export.router)
 app.include_router(converter.router)
 app.include_router(settings_router.router)
 app.include_router(backup_router.router)
+app.include_router(refine_router.router)
 
 
 @app.post("/shutdown", tags=["system"])

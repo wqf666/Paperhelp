@@ -87,3 +87,26 @@ class MethodVersionService:
         db.commit()
         db.refresh(version)
         return version
+
+    def activate_version(self, version_id: int, project_id: int, db: Session) -> MethodVersion:
+        """
+        Set a method version's status to 'active'.
+        Deactivates all other active versions in the same project first.
+        """
+        version = db.query(MethodVersion).filter(MethodVersion.id == version_id).first()
+        if not version:
+            raise ValueError(f"MethodVersion with id {version_id} not found")
+        if version.project_id != project_id:
+            raise ValueError("Method version does not belong to this project")
+
+        # Deactivate all other active versions in this project
+        db.query(MethodVersion).filter(
+            MethodVersion.project_id == project_id,
+            MethodVersion.status == "active",
+            MethodVersion.id != version_id,
+        ).update({"status": "draft"}, synchronize_session="fetch")
+
+        version.status = "active"
+        db.commit()
+        db.refresh(version)
+        return version

@@ -15,6 +15,7 @@ class ManuscriptSectionCreate(BaseModel):
 class ManuscriptSectionUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
+    generated_content: Optional[str] = None
     status: Optional[str] = None
     method_version_id: Optional[int] = None
 

@@ -100,7 +100,7 @@ def get_evidence_spans(paper_id: int, db: Session = Depends(get_db)):
 @router.post("/projects/{project_id}/papers/upload", response_model=PaperResponse, status_code=201)
 async def upload_paper(
     project_id: int,
-    title: str = Form(...),
+    title: Optional[str] = Form(None),
     authors: str = Form(""),
     year: Optional[int] = Form(None),
     venue: str = Form(""),
@@ -119,6 +119,11 @@ async def upload_paper(
     file_content = await file.read()
     file_path = storage.save(file.filename or "paper.pdf", file_content)
 
+    # Fallback: use filename (without extension) as title if none provided
+    if not title:
+        name = file.filename or "paper.pdf"
+        title = name.rsplit(".", 1)[0] if "." in name else name
+
     # Create paper record
     paper = Paper(
         project_id=project_id,
@@ -134,17 +139,20 @@ async def upload_paper(
     db.commit()
     db.refresh(paper)
 
-    # Trigger PDF parsing
-    try:
-        PDFParsingService().parse_and_chunk(paper.id, db)
-    except (ValueError, RuntimeError):
-        pass  # Parse errors don't prevent paper creation
-
-    # Trigger paper analysis
-    try:
-        PaperAnalysisService().analyze_paper(paper.id, db)
-    except (ValueError, RuntimeError):
-        pass  # Analysis errors don't prevent paper creation
+    # NOTE: PDF parsing and AI analysis are NOT triggered automatically.
+    # The user can trigger analysis manually via POST /papers/{paper_id}/analyze
+    # This saves API costs — AI is only called when the user explicitly requests it.
 
     db.refresh(paper)
     return paper
+
+
+@router.delete("/papers/{paper_id}", status_code=204)
+def delete_paper(paper_id: int, db: Session = Depends(get_db)):
+    """Delete a paper and all associated data (card, chunks, etc.)."""
+    paper = db.query(Paper).filter(Paper.id == paper_id).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    db.delete(paper)
+    db.commit()
+    return None

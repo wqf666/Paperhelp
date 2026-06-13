@@ -56,3 +56,19 @@ def list_reviewer_simulations(project_id: int, db: Session = Depends(get_db)):
         .filter(ReviewerSimulation.project_id == project_id)
         .all()
     )
+
+
+@router.delete(
+    "/projects/{project_id}/reviewer-simulations",
+    status_code=204,
+)
+def delete_all_reviewer_simulations(project_id: int, db: Session = Depends(get_db)):
+    """Delete all reviewer simulations for a project."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    db.query(ReviewerSimulation).filter(
+        ReviewerSimulation.project_id == project_id
+    ).delete()
+    db.commit()
+    return None

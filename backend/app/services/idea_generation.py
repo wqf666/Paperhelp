@@ -32,9 +32,19 @@ class IdeaGenerationService:
         if not project:
             raise ValueError(f"Project with id {project_id} not found")
 
-        # 2. Collect paper cards
-        paper_ids = [p.id for p in db.query(Paper).filter(Paper.project_id == project_id).all()]
-        paper_cards = db.query(PaperCard).filter(PaperCard.paper_id.in_(paper_ids)).all() if paper_ids else []
+        # 2. Collect paper cards — require at least one analyzed paper
+        papers = db.query(Paper).filter(Paper.project_id == project_id).all()
+        paper_ids = [p.id for p in papers]
+
+        if not paper_ids:
+            raise ValueError("请先在论文库中上传论文，再生成创新方向。")
+
+        paper_cards = db.query(PaperCard).filter(PaperCard.paper_id.in_(paper_ids)).all()
+
+        if not paper_cards:
+            raise ValueError(
+                "论文库中已有论文但尚未分析。请先对论文进行 AI 分析后再生成创新方向。"
+            )
 
         cards_dicts = [
             {

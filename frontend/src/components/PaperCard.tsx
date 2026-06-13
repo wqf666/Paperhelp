@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Paper, PaperCard as PaperCardType } from '@/lib/types';
 import { api } from '@/lib/api';
+import ChunkViewer from '@/components/ChunkViewer';
 
 interface PaperCardComponentProps {
   paper: Paper;
@@ -37,6 +38,10 @@ export default function PaperCardComponent({
   const [showDetails, setShowDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStatus, setCurrentStatus] = useState(paper.status);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [showChunks, setShowChunks] = useState(false);
 
   useEffect(() => {
     setCurrentStatus(paper.status);
@@ -57,6 +62,20 @@ export default function PaperCardComponent({
       setCurrentStatus('error');
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deletePaper(paper.id);
+      onAnalysisComplete?.();
+    } catch (err: any) {
+      setDeleteError(err.message || '删除失败，请重试');
+      setShowDeleteConfirm(false);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -120,8 +139,66 @@ export default function PaperCardComponent({
               )}
             </button>
           )}
+
+          {/* Delete button */}
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={isDeleting || isAnalyzing}
+              className="p-1 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="删除论文"
+            >
+              {isDeleting ? (
+                <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              )}
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="text-xs px-2 py-0.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? '删除中...' : '确认删除'}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {deleteError && (
+        <p className="mt-2 text-xs text-red-600">{deleteError}</p>
+      )}
 
       {error && (
         <p className="mt-2 text-xs text-red-600">{error}</p>
@@ -279,6 +356,36 @@ export default function PaperCardComponent({
                   {paperCard.reproducibility}
                 </p>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Parsed Content Viewer */}
+      {(paper.pdf_parse_status === 'completed' || paper.pdf_parse_status === 'parsed') && (
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          <button
+            onClick={() => setShowChunks(!showChunks)}
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+          >
+            <svg
+              className={`w-3 h-3 transition-transform ${showChunks ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+            {showChunks ? '收起解析内容' : '查看解析内容'}
+          </button>
+          {showChunks && (
+            <div className="mt-3">
+              <ChunkViewer paperId={paper.id} />
             </div>
           )}
         </div>

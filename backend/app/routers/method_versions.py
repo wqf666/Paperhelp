@@ -100,3 +100,44 @@ def archive_method_version(
 
     archived = service.archive_version(version_id, db)
     return archived
+
+
+@router.post(
+    "/projects/{project_id}/method-versions/{version_id}/activate",
+    response_model=MethodVersionResponse,
+)
+def activate_method_version(
+    project_id: int, version_id: int, db: Session = Depends(get_db)
+):
+    """Activate a method version (set status to 'active', deactivate others)."""
+    service = MethodVersionService()
+    try:
+        version = service.get_version(version_id, db)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Method version not found")
+    if not version or version.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Method version not found")
+
+    activated = service.activate_version(version_id, project_id, db)
+    return activated
+
+
+@router.delete(
+    "/projects/{project_id}/method-versions/{version_id}",
+    status_code=204,
+)
+def delete_method_version(
+    project_id: int, version_id: int, db: Session = Depends(get_db)
+):
+    """Delete a method version permanently."""
+    service = MethodVersionService()
+    try:
+        version = service.get_version(version_id, db)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Method version not found")
+    if not version or version.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Method version not found")
+
+    db.delete(version)
+    db.commit()
+    return None

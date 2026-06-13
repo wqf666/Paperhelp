@@ -22,6 +22,9 @@ export interface Project {
   updated_at: string;
   paper_count?: number;
   idea_count?: number;
+  method_version_count?: number;
+  experiment_count?: number;
+  manuscript_count?: number;
   papers?: PaperBrief[];
   research_ideas?: IdeaBrief[];
 }

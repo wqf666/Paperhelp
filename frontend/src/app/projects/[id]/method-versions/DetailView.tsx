@@ -17,6 +17,9 @@ export default function MethodVersionsPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<number | null>(null);
+  const [activatingId, setActivatingId] = useState<number | null>(null);
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -98,6 +101,45 @@ export default function MethodVersionsPage() {
     }
   };
 
+  const handleActivate = async (versionId: number) => {
+    setActivatingId(versionId);
+    try {
+      await api.activateMethodVersion(projectId, versionId);
+      mutate(`method-versions-${projectId}`);
+      mutate(`project-${projectId}`);
+    } catch (err: any) {
+      alert('激活失败: ' + (err.message || '未知错误'));
+    } finally {
+      setActivatingId(null);
+    }
+  };
+
+  const handleUpdate = async (versionId: number, data: { name?: string; description?: string; key_changes?: string[]; rationale?: string }) => {
+    setUpdatingId(versionId);
+    try {
+      await api.updateMethodVersion(projectId, versionId, data);
+      mutate(`method-versions-${projectId}`);
+    } catch (err: any) {
+      alert('更新失败: ' + (err.message || '未知错误'));
+      throw err;
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleDelete = async (versionId: number) => {
+    setDeletingId(versionId);
+    try {
+      await api.deleteMethodVersion(projectId, versionId);
+      mutate(`method-versions-${projectId}`);
+      mutate(`project-${projectId}`);
+    } catch (err: any) {
+      alert('删除失败: ' + (err.message || '未知错误'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const tabs = [
     { name: '概览', href: `/projects/${projectId}` },
     { name: '论文库', href: `/projects/${projectId}/papers` },
@@ -165,6 +207,62 @@ export default function MethodVersionsPage() {
           {showForm ? '收起表单' : '创建版本'}
         </button>
       </div>
+
+      {/* Version Summary */}
+      {!isLoading && !error && versions && versions.length > 0 && (
+        <div className="card p-4 mb-6 bg-gradient-to-r from-gray-50 to-white">
+          <div className="flex items-center gap-6 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-gray-900">{versions.length}</p>
+                <p className="text-xs text-gray-500">总版本数</p>
+              </div>
+            </div>
+
+            {(() => {
+              const active = versions.find((v) => v.status === 'active');
+              const drafts = versions.filter((v) => v.status === 'draft').length;
+              const archived = versions.filter((v) => v.status === 'archived').length;
+              return (
+                <>
+                  {active && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-lg">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <div>
+                        <p className="text-xs font-medium text-emerald-700">当前活跃</p>
+                        <p className="text-xs text-emerald-600">v{active.version_number} {active.name}</p>
+                      </div>
+                    </div>
+                  )}
+                  {!active && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg">
+                      <span className="w-2 h-2 rounded-full bg-gray-400" />
+                      <p className="text-xs text-gray-500">暂无活跃版本，请点击「激活」设定当前使用版本</p>
+                    </div>
+                  )}
+                  {drafts > 0 && (
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-gray-700">{drafts}</p>
+                      <p className="text-xs text-gray-500">草稿</p>
+                    </div>
+                  )}
+                  {archived > 0 && (
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-gray-700">{archived}</p>
+                      <p className="text-xs text-gray-500">已归档</p>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Create Form */}
       {showForm && (
@@ -337,7 +435,12 @@ export default function MethodVersionsPage() {
               <MethodVersionCard
                 key={version.id}
                 version={version}
+                allVersions={versions}
+                ideas={ideas || []}
                 onArchive={archivingId === null ? handleArchive : undefined}
+                onActivate={activatingId === null ? handleActivate : undefined}
+                onUpdate={updatingId === null ? handleUpdate : undefined}
+                onDelete={deletingId === null ? handleDelete : undefined}
               />
             ))}
         </div>

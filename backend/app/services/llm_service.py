@@ -111,6 +111,11 @@ class BaseLLMService(ABC):
         """Generate content for a manuscript section based on context."""
         pass
 
+    @abstractmethod
+    def refine_content(self, content: str, instruction: str, history: list[dict]) -> dict:
+        """Refine existing content based on a user instruction within a multi-turn conversation."""
+        pass
+
 
 def _extract_json_from_text(text: str) -> dict | list:
     """Attempt to parse JSON from text that may contain markdown fences or surrounding prose."""
@@ -192,86 +197,78 @@ class MockLLMService(BaseLLMService):
         research_field: str,
         additional_context: str = "",
     ) -> list[dict]:
-        context_note = f" Context note: {additional_context}" if additional_context else ""
-        field_label = research_field or "natural language processing"
+        field_label = research_field or "该研究领域"
+        # Extract paper_ids from provided paper cards for related_papers field
+        pids = [c.get("paper_id", i + 1) for i, c in enumerate(paper_cards[:3])]
+
+        # Build limitation-based gaps from actual paper cards when available
+        gaps = []
+        for c in paper_cards[:3]:
+            lims = c.get("limitations", [])
+            if lims:
+                gaps.append(lims[0] if isinstance(lims[0], str) else str(lims[0]))
+        while len(gaps) < 3:
+            gaps.append("已有方法在泛化性和效率方面仍有提升空间")
+
         return [
             {
-                "name": f"Cross-lingual Transfer with Adaptive Contrastive Learning in {field_label}",
-                "research_gap": (
-                    f"Current contrastive learning approaches in {field_label} are predominantly monolingual "
-                    "and fail to leverage cross-lingual semantic alignment, limiting applicability to "
-                    f"low-resource languages.{context_note}"
-                ),
+                "name": f"基于论文局限性的改进方向：针对{field_label}的关键瓶颈",
+                "research_gap": f"通过分析上传的论文，发现以下局限：{gaps[0]}。这为后续研究提供了明确的突破点。",
                 "proposed_solution": (
-                    "We propose a cross-lingual adaptive contrastive framework that automatically "
-                    "identifies transferable semantic features across language pairs. The method uses "
-                    "a language-agnostic projection head combined with a dynamic margin contrastive loss "
-                    "that adapts to the linguistic distance between language pairs."
+                    "针对论文中识别的局限性，提出一种改进方案。结合最新技术（如自适应学习策略或更高效的架构设计），"
+                    "在保持原有方法优势的同时，系统性地解决其不足之处。"
                 ),
+                "related_papers": pids[:1],
                 "expected_contributions": [
-                    "A novel cross-lingual contrastive learning framework for low-resource language adaptation",
-                    "A dynamic margin strategy that adjusts to linguistic distance between language pairs",
-                    "Comprehensive evaluation across 10 typologically diverse languages",
+                    "针对已识别局限性提出具体改进方法",
+                    "在相同实验条件下验证改进效果",
+                    "提供详细的消融实验分析各组件贡献",
                 ],
-                "novelty_score": 8.2,
-                "feasibility_score": 7.5,
-                "risk_level": "medium",
+                "novelty_score": 7.5,
+                "feasibility_score": 8.0,
+                "risk_level": "low",
                 "experiment_plan_summary": (
-                    "Evaluate on XTREME benchmark across 10 languages, comparing against mBERT, XLM-R, "
-                    "and MAD-X. Include ablation on contrastive loss variants and few-shot transfer experiments."
+                    f"在与论文相同的基准数据集上进行对比实验，验证改进效果。使用论文中提到的评估指标。"
                 ),
             },
             {
-                "name": f"Efficient Knowledge Distillation via Structured Pruning in {field_label}",
-                "research_gap": (
-                    f"Existing knowledge distillation methods in {field_label} focus on output-level "
-                    "distillation and ignore the internal structural knowledge that larger models capture, "
-                    f"resulting in suboptimal student model performance.{context_note}"
-                ),
+                "name": f"跨方法融合：结合{field_label}多篇论文优势的新框架",
+                "research_gap": f"通过分析多篇上传的论文，发现各自方法存在互补性：{gaps[1] if len(gaps) > 1 else '不同方法在不同场景下各有优劣'}。跨方法融合有较大潜力。",
                 "proposed_solution": (
-                    "We propose a structured pruning-aware distillation method that first identifies "
-                    "critical sub-networks in the teacher model via importance scoring, then transfers "
-                    "both output distributions and intermediate structural knowledge to a compact student. "
-                    "A progressive distillation schedule gradually shifts focus from shallow to deep layers."
+                    "提取多篇论文中方法的核心优势组件，设计一个统一的融合框架。"
+                    "通过引入注意力机制或门控策略，动态选择最适合当前输入的组件组合。"
                 ),
+                "related_papers": pids[:2] if len(pids) >= 2 else pids,
                 "expected_contributions": [
-                    "A structured importance scoring method for identifying critical teacher sub-networks",
-                    "A progressive distillation schedule for more effective knowledge transfer",
-                    "State-of-the-art results on model compression benchmarks with 10x parameter reduction",
+                    "提出跨方法融合框架，整合多篇论文的核心优势",
+                    "设计动态组件选择策略",
+                    "在多个基准上验证融合框架的有效性",
                 ],
-                "novelty_score": 7.0,
+                "novelty_score": 8.0,
+                "feasibility_score": 6.5,
+                "risk_level": "medium",
+                "experiment_plan_summary": (
+                    "在论文涉及的多个数据集上测试融合框架，与各单一方法进行对比和消融分析。"
+                ),
+            },
+            {
+                "name": f"效率优化：面向{field_label}的轻量化改进",
+                "research_gap": f"上传论文中的方法虽然效果显著，但在计算效率或资源消耗方面仍有优化空间：{gaps[2] if len(gaps) > 2 else '模型复杂度和推理成本较高'}。",
+                "proposed_solution": (
+                    "在保持论文方法核心思想的前提下，引入知识蒸馏、模型剪枝或量化等轻量化技术，"
+                    "设计一个更高效的变体方案，使其更适用于资源受限的实际部署场景。"
+                ),
+                "related_papers": pids[:1],
+                "expected_contributions": [
+                    "提出论文方法的高效变体",
+                    "在性能相近的条件下显著降低计算成本",
+                    "提供详细的效率-性能权衡分析",
+                ],
+                "novelty_score": 6.5,
                 "feasibility_score": 8.5,
                 "risk_level": "low",
                 "experiment_plan_summary": (
-                    "Compress BERT-base and RoBERTa-large models. Evaluate on GLUE and SQuAD benchmarks. "
-                    "Compare against standard KD, patient KD, and MobileBERT baselines. Measure latency and throughput."
-                ),
-            },
-            {
-                "name": f"Uncertainty-Aware Multi-Expert Ensemble for {field_label}",
-                "research_gap": (
-                    f"State-of-the-art models in {field_label} produce overconfident predictions on "
-                    "ambiguous inputs, which is problematic for safety-critical applications. Current "
-                    f"uncertainty estimation methods are computationally prohibitive at scale.{context_note}"
-                ),
-                "proposed_solution": (
-                    "We propose an efficient multi-expert ensemble that uses lightweight expert routing "
-                    "to partition the input space. Each expert specializes in a region of the input "
-                    "distribution and reports calibrated uncertainty estimates. A meta-learner aggregates "
-                    "expert predictions with learned reliability weights."
-                ),
-                "expected_contributions": [
-                    "An efficient multi-expert architecture with learned input routing for uncertainty estimation",
-                    "A calibration-aware training objective that improves prediction reliability",
-                    "Demonstration of improved safety metrics on adversarial and out-of-distribution benchmarks",
-                ],
-                "novelty_score": 7.8,
-                "feasibility_score": 6.5,
-                "risk_level": "high",
-                "experiment_plan_summary": (
-                    "Evaluate calibration on GLUE with temperature scaling metrics. Test robustness on "
-                    "adversarial NLI datasets and OOD detection on genre-shifted corpora. Compare against "
-                    "Monte Carlo dropout, deep ensembles, and evidential deep learning baselines."
+                    "对比原始方法和轻量化变体的推理速度、内存占用和性能表现，分析效率-性能权衡曲线。"
                 ),
             },
         ]
@@ -445,70 +442,274 @@ class MockLLMService(BaseLLMService):
             ],
             "outline": [
                 {
-                    "section": "1. Introduction",
-                    "subsections": [
-                        "1.1 Background and Motivation",
-                        "1.2 Problem Statement",
-                        "1.3 Our Contributions",
-                    ],
+                    "title": "Introduction",
+                    "description": "Establish the research context, identify gaps, and present our contributions.",
                     "key_points": [
                         "Establish the importance of the research problem and its real-world applications",
                         "Review the current state of the art and highlight key limitations",
                         "Summarize our main contributions and the significance of our results",
                     ],
+                    "estimated_length": 800,
+                    "sections": [
+                        {
+                            "title": "Background and Motivation",
+                            "description": "Introduce the research domain and why it matters.",
+                            "key_points": ["Define the core problem", "Show real-world relevance"],
+                            "estimated_length": 300,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "研究背景与实际应用场景介绍",
+                                    "word_count": 250,
+                                    "key_references": ["相关领域综述论文", "行业应用报告"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Problem Statement",
+                            "description": "Formally state the problem and existing limitations.",
+                            "key_points": ["Identify key limitations", "Motivate the need for a new approach"],
+                            "estimated_length": 250,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "现有技术局限性分析",
+                                    "word_count": 200,
+                                    "key_references": ["最新基准测试结果", "对比方法论文"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Our Contributions",
+                            "description": "Summarize the main contributions of this work.",
+                            "key_points": ["List concrete contributions", "Preview experimental validation"],
+                            "estimated_length": 250,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "本文主要贡献概述",
+                                    "word_count": 150,
+                                    "key_references": ["实验主要结论"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                    ],
                 },
                 {
-                    "section": "2. Related Work",
-                    "subsections": [
-                        "2.1 Foundational Approaches",
-                        "2.2 Recent Advances",
-                        "2.3 Comparison with Our Approach",
-                    ],
+                    "title": "Related Work",
+                    "description": "Survey foundational and recent literature, and position our work relative to prior art.",
                     "key_points": [
                         "Cover seminal works that established the research direction",
                         "Discuss the most recent and relevant publications in the area",
                         "Clearly articulate how our approach differs from and improves upon prior work",
                     ],
+                    "estimated_length": 850,
+                    "sections": [
+                        {
+                            "title": "Foundational Approaches",
+                            "description": "Review classical methods that laid the groundwork.",
+                            "key_points": ["Summarize key early contributions", "Note their limitations"],
+                            "estimated_length": 300,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "该研究方向的基础性与开创性方法",
+                                    "word_count": 300,
+                                    "key_references": ["奠基性论文", "经典算法文献"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Recent Advances",
+                            "description": "Cover state-of-the-art developments in the last 2-3 years.",
+                            "key_points": ["Highlight breakthrough results", "Identify remaining gaps"],
+                            "estimated_length": 350,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "近两年相关领域的重要进展",
+                                    "word_count": 350,
+                                    "key_references": ["最新顶会论文", "预训练模型相关工作"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Comparison with Our Approach",
+                            "description": "Explicitly compare our method to the most relevant baselines.",
+                            "key_points": ["Highlight differentiators", "Explain expected advantages"],
+                            "estimated_length": 200,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "本文方法与现有方法的对比分析",
+                                    "word_count": 200,
+                                    "key_references": ["对比实验数据", "已有方法的局限性分析"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                    ],
                 },
                 {
-                    "section": "3. Method",
-                    "subsections": [
-                        "3.1 Problem Formulation",
-                        "3.2 Proposed Framework",
-                        "3.3 Training Procedure",
-                        "3.4 Theoretical Analysis",
-                    ],
+                    "title": "Method",
+                    "description": "Present the proposed framework, including formulation, architecture, training, and analysis.",
                     "key_points": [
                         "Formally define the problem setting and notation",
                         "Describe each component of the proposed framework in detail",
                         "Explain the training algorithm and optimization objectives",
                         "Provide theoretical justification for the design choices",
                     ],
+                    "estimated_length": 1400,
+                    "sections": [
+                        {
+                            "title": "Problem Formulation",
+                            "description": "Define the problem formally with mathematical notation.",
+                            "key_points": ["Introduce notation", "State assumptions"],
+                            "estimated_length": 250,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "问题形式化定义与数学符号说明",
+                                    "word_count": 250,
+                                    "key_references": ["数学基础文献", "领域标准符号约定"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Proposed Framework",
+                            "description": "Detail the architecture and components of our approach.",
+                            "key_points": ["Describe each module", "Explain design rationale"],
+                            "estimated_length": 500,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "提出框架的整体架构与各组件详解",
+                                    "word_count": 500,
+                                    "key_references": ["架构图说明", "相关技术论文", "设计理念来源"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Training Procedure",
+                            "description": "Describe the training algorithm, loss functions, and optimization strategy.",
+                            "key_points": ["Present the algorithm", "Define loss functions"],
+                            "estimated_length": 350,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "训练算法流程与优化目标",
+                                    "word_count": 350,
+                                    "key_references": ["优化算法文献", "损失函数设计依据"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Theoretical Analysis",
+                            "description": "Provide theoretical justification for design choices.",
+                            "key_points": ["Present key theorems or proofs", "Discuss convergence properties"],
+                            "estimated_length": 300,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "理论分析与设计选择的合理性证明",
+                                    "word_count": 300,
+                                    "key_references": ["理论证明相关论文", "收敛性分析"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                    ],
                 },
                 {
-                    "section": "4. Experiments",
-                    "subsections": [
-                        "4.1 Experimental Setup",
-                        "4.2 Main Results",
-                        "4.3 Ablation Studies",
-                        "4.4 Analysis and Discussion",
-                    ],
+                    "title": "Experiments",
+                    "description": "Present the experimental setup, results, ablation studies, and analysis.",
                     "key_points": [
                         "Describe datasets, baselines, evaluation metrics, and implementation details",
                         "Present main experimental results with statistical significance testing",
                         "Ablation studies validating the contribution of each component",
                         "Qualitative analysis and case studies illustrating model behavior",
                     ],
+                    "estimated_length": 1000,
+                    "sections": [
+                        {
+                            "title": "Experimental Setup",
+                            "description": "Describe datasets, baselines, metrics, and implementation details.",
+                            "key_points": ["List all datasets", "Describe baselines and metrics"],
+                            "estimated_length": 300,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "实验设置: 数据集、基线方法、评价指标与实现细节",
+                                    "word_count": 300,
+                                    "key_references": ["数据集原始论文", "基线方法论文", "超参数配置"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Main Results",
+                            "description": "Present primary experimental findings.",
+                            "key_points": ["Show comparison tables", "Discuss statistical significance"],
+                            "estimated_length": 400,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "主要实验结果与统计显著性分析",
+                                    "word_count": 400,
+                                    "key_references": ["实验结果表格", "统计检验方法"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Ablation Studies",
+                            "description": "Validate the contribution of each proposed component.",
+                            "key_points": ["Remove components one by one", "Measure impact"],
+                            "estimated_length": 300,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "消融实验与各组件贡献验证",
+                                    "word_count": 300,
+                                    "key_references": ["消融实验结果", "组件对比数据"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                    ],
                 },
                 {
-                    "section": "5. Conclusion",
-                    "subsections": [
-                        "5.1 Summary of Findings",
-                        "5.2 Limitations and Future Work",
-                    ],
+                    "title": "Conclusion",
+                    "description": "Summarize findings, acknowledge limitations, and suggest future directions.",
                     "key_points": [
                         "Recap the main contributions and experimental findings",
                         "Acknowledge limitations and outline promising directions for future research",
+                    ],
+                    "estimated_length": 400,
+                    "sections": [
+                        {
+                            "title": "Summary of Findings",
+                            "description": "Recap the key results and their implications.",
+                            "key_points": ["Restate main results", "Highlight broader impact"],
+                            "estimated_length": 200,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "本文主要贡献与实验发现总结",
+                                    "word_count": 200,
+                                    "key_references": ["核心实验结果", "主要贡献列表"],
+                                },
+                            ],
+                            "sections": [],
+                        },
+                        {
+                            "title": "Limitations and Future Work",
+                            "description": "Discuss constraints and promising next steps.",
+                            "key_points": ["Be transparent about limitations", "Propose concrete future work"],
+                            "estimated_length": 200,
+                            "writing_plan": [
+                                {
+                                    "paragraph_topic": "研究局限性与未来研究方向",
+                                    "word_count": 200,
+                                    "key_references": ["未解决问题", "潜在改进方向"],
+                                },
+                            ],
+                            "sections": [],
+                        },
                     ],
                 },
             ],
@@ -811,6 +1012,15 @@ class MockLLMService(BaseLLMService):
             f"[This is a mock-generated section draft. Please replace with your actual content.]"
         )
 
+    # -- Refine content (mock) -------------------------------------------------
+
+    def refine_content(self, content: str, instruction: str, history: list[dict]) -> dict:
+        refined = content + "\n\n已根据您的要求调整"
+        return {
+            "refined_content": refined,
+            "assistant_message": "已根据您的反馈进行了调整。",
+        }
+
 
 # ---------------------------------------------------------------------------
 # DeepSeek / OpenAI-compatible implementation
@@ -825,12 +1035,19 @@ class DeepSeekLLMService(BaseLLMService):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model = model
 
+    # Global instruction appended to every system prompt — forces Chinese output
+    _ZH_INSTRUCTION = (
+        "\n\n【重要】你必须用中文输出所有文本内容（包括分析、描述、建议等）。"
+        "JSON 字段名保持英文不变，但字段值必须使用中文。"
+        "专有名词（如模型名、数据集名、算法名）可保留英文原文。"
+    )
+
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
         """Send a chat completion request and return the assistant's raw text response."""
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": system_prompt + self._ZH_INSTRUCTION},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.7,
@@ -898,14 +1115,18 @@ class DeepSeekLLMService(BaseLLMService):
     ) -> list[dict]:
         system_prompt = (
             "You are a senior research scientist tasked with generating novel and feasible "
-            "research ideas. Analyse the provided paper summaries and produce research ideas "
-            "that address identified gaps. Respond with valid JSON only — a JSON array of idea "
-            "objects.\n\n"
+            "research ideas **based on the user's uploaded paper library**. Your primary source "
+            "of inspiration must be the analysed papers provided below. Identify limitations, "
+            "unresolved questions, and research gaps IN THOSE PAPERS, and propose new research "
+            "directions that directly build upon or address them.\n\n"
+            "For each idea, explicitly state which paper(s) inspired it (by paper_id) in the "
+            "related_papers field.\n\n"
             "Required JSON schema (array of objects):\n"
             "[{\n"
             '  "name": "<string: concise idea title>",\n'
-            '  "research_gap": "<string: the gap this idea addresses>",\n'
+            '  "research_gap": "<string: the specific gap identified in the uploaded papers>",\n'
             '  "proposed_solution": "<string: high-level description of the approach>",\n'
+            '  "related_papers": [<int: paper_id>, ...],\n'
             '  "expected_contributions": ["<string>", ...],\n'
             '  "novelty_score": <float 0-10>,\n'
             '  "feasibility_score": <float 0-10>,\n'
@@ -916,9 +1137,10 @@ class DeepSeekLLMService(BaseLLMService):
         )
         cards_summary = json.dumps(paper_cards[:10], ensure_ascii=False, default=str)
         user_prompt = (
-            f"Research Field: {research_field}\n"
+            f"Research Field (supplementary): {research_field or 'Not specified'}\n"
             f"Additional Context: {additional_context or 'None provided.'}\n\n"
-            f"Paper Cards Summary:\n{cards_summary}"
+            f"Uploaded Paper Cards (PRIMARY SOURCE — {len(paper_cards)} papers analysed):\n"
+            f"{cards_summary}"
         )
         try:
             result = self._call_llm_json(system_prompt, user_prompt)
@@ -994,6 +1216,10 @@ class DeepSeekLLMService(BaseLLMService):
             "You are an experienced academic writer. Generate a manuscript outline based on "
             "the project context, research ideas, and literature summaries provided. Respond "
             "with valid JSON only.\n\n"
+            "IMPORTANT STRUCTURAL RULE: A section can EITHER have child subsections OR a "
+            "writing_plan (paragraph-level breakdown), but NOT both. If a section is divided "
+            "into subsections, each subsection should carry its own writing_plan. The parent "
+            "section only needs a description and key_points summarising what the subsections cover.\n\n"
             "Required JSON schema:\n"
             "{\n"
             '  "title": "<string: paper title>",\n'
@@ -1001,13 +1227,35 @@ class DeepSeekLLMService(BaseLLMService):
             '  "contributions": ["<string>", ...],\n'
             '  "outline": [\n'
             "    {\n"
-            '      "section": "<string: section heading>",\n'
-            '      "subsections": ["<string>", ...],\n'
-            '      "key_points": ["<string>", ...]\n'
-            "    }, ...\n"
+            '      "title": "<string: section heading>",\n'
+            '      "description": "<string: brief description of what this section covers>",\n'
+            '      "key_points": ["<string: key argument or takeaway>", ...],\n'
+            '      "estimated_length": <int: total estimated word count for this section>,\n'
+            '      "sections": [\n'
+            "        {\n"
+            '          "title": "<string: subsection heading>",\n'
+            '          "description": "<string: brief description>",\n'
+            '          "key_points": ["<string>", ...],\n'
+            '          "estimated_length": <int: estimated word count>,\n'
+            '          "writing_plan": [\n'
+            "            {\n"
+            '              "paragraph_topic": "<string: what this paragraph covers>",\n'
+            '              "word_count": <int: estimated word count>,\n'
+            '              "key_references": ["<string: reference or data source>"]\n'
+            "            }\n"
+            "          ],\n"
+            '          "sections": []\n'
+            "        }\n"
+            "      ]\n"
+            "    }\n"
             "  ]\n"
             "}\n\n"
-            "The outline should cover at least: Introduction, Related Work, Method, Experiments, Conclusion."
+            "Rules:\n"
+            "- Top-level sections (Introduction, Related Work, Method, Experiments, Conclusion) "
+            "MUST have subsections. Do NOT put writing_plan on these parent sections.\n"
+            "- Each subsection MUST have a writing_plan with 2-4 paragraphs.\n"
+            "- Use 'title' (not 'section') and 'sections' (not 'subsections') as field names.\n"
+            "- Keep subsection nesting to at most 2 levels."
         )
         user_prompt = (
             f"Project: {json.dumps(project, ensure_ascii=False, default=str)}\n\n"
@@ -1368,6 +1616,49 @@ class DeepSeekLLMService(BaseLLMService):
                 f"the identified research gaps while ensuring reproducibility and scientific rigor.\n\n"
                 f"[This is a mock-generated section draft. Please replace with your actual content.]"
             )
+
+    # -- Refine content ---------------------------------------------------------
+
+    def refine_content(self, content: str, instruction: str, history: list[dict]) -> dict:
+        system_prompt = (
+            "你是一个学术研究助手，帮助用户调整和优化学术内容。用户会给你一段当前内容和修改指令，"
+            "请根据指令修改内容。直接输出修改后的完整内容，不要添加额外的解释或markdown标记。\n\n"
+            "请以 JSON 格式回复，包含以下字段：\n"
+            "{\n"
+            '  "refined_content": "<修改后的完整内容>",\n'
+            '  "assistant_message": "<简要说明修改了什么，用中文>"\n'
+            "}"
+        )
+        # Build conversation context from history
+        history_parts = []
+        for turn in (history or []):
+            role = turn.get("role", "user")
+            turn_content = turn.get("content", "")
+            if role == "user":
+                history_parts.append(f"用户: {turn_content}")
+            elif role == "assistant":
+                history_parts.append(f"助手: {turn_content}")
+        history_text = "\n".join(history_parts) if history_parts else "无历史对话。"
+
+        user_prompt = (
+            f"当前内容:\n{content}\n\n"
+            f"修改指令: {instruction}\n\n"
+            f"历史对话:\n{history_text}\n\n"
+            "请根据修改指令对当前内容进行修改，并以 JSON 格式返回 refined_content 和 assistant_message。"
+        )
+        try:
+            result = self._call_llm_json(system_prompt, user_prompt)
+            if isinstance(result, list):
+                result = result[0] if result else {}
+            return {
+                "refined_content": result.get("refined_content", content),
+                "assistant_message": result.get("assistant_message", "已完成调整。"),
+            }
+        except Exception as exc:
+            return {
+                "refined_content": content,
+                "assistant_message": f"调整失败: {exc}",
+            }
 
 
 # ---------------------------------------------------------------------------

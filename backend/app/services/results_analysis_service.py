@@ -1,6 +1,8 @@
 """Service for experiment result upload, parsing, and LLM-based analysis."""
 
 import logging
+import os
+from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -31,7 +33,7 @@ class ResultsAnalysisService:
         Parse an experiment result file and store it in the database.
 
         1. Validate the method version exists.
-        2. Parse the file using ExperimentResultParser.
+        2. Read and parse the file using ExperimentResultParser.
         3. Create an ExperimentResult record with raw_data.
         """
         # Validate method version
@@ -43,12 +45,20 @@ class ResultsAnalysisService:
         if not method_version:
             raise ValueError(f"MethodVersion with id {method_version_id} not found")
 
-        # Parse file
+        # Read file content and parse
         parser = ExperimentResultParser()
-        raw_data = parser.parse(file_path)
+        file_name = os.path.basename(file_path)
+        try:
+            with open(file_path, "rb") as f:
+                file_content = f.read()
+        except FileNotFoundError:
+            raise ValueError(f"File not found: {file_path}")
 
-        # Detect format
-        fmt = parser.detect_format(file_path)
+        parsed = parser.parse(file_content, file_name)
+        raw_data = parsed.get("raw_data", [])
+
+        # Derive format from file extension
+        fmt = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else "unknown"
 
         # Create record
         result = ExperimentResult(

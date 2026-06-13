@@ -176,9 +176,21 @@ export default function ProjectDetailPage() {
             </div>
             <div className="p-4 bg-gray-50 rounded-lg text-center">
               <p className="text-2xl font-semibold text-gray-900">
-                {(project as any).method_version_count ?? 0}
+                {project.method_version_count ?? 0}
               </p>
               <p className="text-xs text-gray-500 mt-1">方法版本</p>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg text-center">
+              <p className="text-2xl font-semibold text-gray-900">
+                {project.experiment_count ?? 0}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">实验结果</p>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg text-center">
+              <p className="text-2xl font-semibold text-gray-900">
+                {project.manuscript_count ?? 0}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">论文大纲</p>
             </div>
           </div>
         </div>

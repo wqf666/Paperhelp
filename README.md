@@ -1,6 +1,6 @@
 # 科研论文写作全流程 Agent
 
-面向研究生、科研人员和课题组的 AI 论文写作工作台。基于用户论文知识库，提供论文分析、创新方向发现、实验计划生成和论文大纲辅助。
+面向研究生、科研人员和课题组的 AI 论文写作工作台。基于用户论文知识库，提供论文分析、创新方向发现、实验计划生成、论文大纲辅助和智能写作控制台。
 
 > **合规声明**：本工具仅作为写作和研究辅助，AI 不能作为论文作者。所有生成内容必须人工审核。实验结果不可编造，参考文献不可伪造。
 
@@ -184,6 +184,20 @@ desktop/src-tauri/target/release/bundle/nsis/
 | 引用完整性检查 | 导出前检测未解析的引用键 |
 | 章节内容生成 | LLM 基于项目上下文为指定章节生成草稿内容 |
 
+### MVP 4 — 写作控制台与交互优化
+
+| 模块 | 说明 |
+|------|------|
+| 论文写作控制台 | 全新大纲页面设计，进度概览、完成率百分比、状态统计一目了然 |
+| 章节状态追踪 | 五级状态管理 (待处理/已生成/需修改/已确认/缺引用)，彩色徽章标识 |
+| 生成设置面板 | 三维生成参数 (篇幅/风格/依据) + 自定义补充指令 |
+| 方法版本完善 | 新增删除确认、激活/归档切换、版本编辑功能 |
+| 审稿模拟前置检查 | 生成审稿意见前要求已上传论文或完成大纲，可视化检查清单 |
+| AI 内容润色对话 | RefinementChat 交互式对话组件，支持多轮对话调整 AI 生成内容 |
+| 章节操作面板 | 生成正文、标记完成、标记需修改、标记缺引用等操作 |
+| 大纲可视化 | 可展开/折叠的章节卡片，含描述预览、字数统计、要点计数 |
+| 数据删除功能 | 方法版本、创新方向、实验结果的完整删除确认流程 |
+
 ## API 端点
 
 ### MVP 1 端点
@@ -217,14 +231,18 @@ desktop/src-tauri/target/release/bundle/nsis/
 | GET | /projects/{id}/method-versions/{vid} | 方法版本详情 |
 | PUT | /projects/{id}/method-versions/{vid} | 更新方法版本 |
 | POST | /projects/{id}/method-versions/{vid}/archive | 归档方法版本 |
+| POST | /projects/{id}/method-versions/{vid}/activate | 激活方法版本 |
+| DELETE | /projects/{id}/method-versions/{vid} | 删除方法版本 |
 | POST | /projects/{id}/experiment-results/upload | 上传实验结果 |
 | GET | /projects/{id}/experiment-results | 实验结果列表 |
 | GET | /experiment-results/{id} | 实验结果详情 |
 | POST | /experiment-results/{id}/analyze | 分析实验结果 |
 | GET | /experiment-results/{id}/analysis | 获取分析结果 |
+| DELETE | /experiment-results/{id} | 删除实验结果 |
 | POST | /projects/{id}/reviewer-simulation/generate | 生成审稿人模拟 |
 | GET | /projects/{id}/reviewer-simulations | 审稿人模拟列表 |
 | POST | /ideas/{id}/differentiation-check | 创新性差异检查 |
+| DELETE | /ideas/{id} | 删除创新方向 |
 | GET | /projects/{id}/manuscript/sections | 获取稿件章节 |
 | PUT | /manuscript-sections/{id} | 更新稿件章节 |
 
@@ -254,6 +272,12 @@ desktop/src-tauri/target/release/bundle/nsis/
 | POST | /projects/{id}/manuscript/sections | 创建新章节 |
 | DELETE | /manuscript-sections/{id} | 删除章节 |
 | PUT | /projects/{id}/manuscript/sections/reorder | 章节排序 |
+
+### MVP 4 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /refine | AI 内容润色（多轮对话式） |
 
 ### Desktop 端点
 
@@ -285,7 +309,7 @@ research-agent/
 │   │   ├── database.py          # 数据库连接
 │   │   ├── models/              # SQLAlchemy 模型 (18 张表)
 │   │   ├── schemas/             # Pydantic 数据验证
-│   │   ├── routers/             # API 路由 (14 个 router)
+│   │   ├── routers/             # API 路由 (16 个 router)
 │   │   ├── services/            # 业务逻辑 (16 个 service)
 │   │   ├── parsers/             # 文档解析 (PyMuPDF + BibTeX + 实验结果)
 │   │   ├── export/              # 导出验证 (PreExportValidator)
@@ -298,7 +322,7 @@ research-agent/
 ├── frontend/
 │   ├── src/
 │   │   ├── app/                 # Next.js 页面 (12 个路由)
-│   │   ├── components/          # React 组件 (12 个组件)
+│   │   ├── components/          # React 组件 (13 个组件)
 │   │   └── lib/                 # 工具函数和类型 (19 个接口)
 │   └── package.json
 ├── desktop/                     # Tauri 桌面 App
@@ -321,8 +345,9 @@ research-agent/
 - **MVP 1**（已完成）：核心骨架 + Mock LLM + 完整前后端
 - **MVP 2**（已完成）：PDF 解析 + 证据追溯 + 方法版本 + 实验结果分析 + 审稿模拟 + 创新性检查
 - **MVP 3**（已完成）：引用管理 + Word/LaTeX 导出 + 模板系统 + Cover Letter + Response Letter + AI 声明
-- **Desktop**（当前）：Tauri v2 桌面 App + SQLite + 本地设置 + 项目备份
-- **MVP 4**：Research Skills + 健康仪表盘 + 导师反馈
+- **Desktop**（已完成）：Tauri v2 桌面 App + SQLite + 本地设置 + 项目备份
+- **MVP 4**（已完成）：论文写作控制台 + 章节状态追踪 + AI 润色对话 + 方法版本完善 + 审稿前置检查
+- **未来计划**：Research Skills + 健康仪表盘 + 导师协作反馈
 
 ## 合规规则
 

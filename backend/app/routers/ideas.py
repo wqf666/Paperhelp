@@ -60,8 +60,19 @@ def differentiation_check(idea_id: int, db: Session = Depends(get_db)):
 
     try:
         service = DifferentiationService()
-        service.check_differentiation(idea_id, db)
+        result = service.check_differentiation(idea_id, db)
         db.refresh(idea)
-        return {"differentiation_check": idea.differentiation_check}
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.delete("/ideas/{idea_id}", status_code=204)
+def delete_idea(idea_id: int, db: Session = Depends(get_db)):
+    """Delete a research idea and associated experiment plans."""
+    idea = db.query(ResearchIdea).filter(ResearchIdea.id == idea_id).first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Research idea not found")
+    db.delete(idea)
+    db.commit()
+    return None

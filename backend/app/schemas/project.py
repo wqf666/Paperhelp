@@ -48,5 +48,8 @@ class ProjectResponse(BaseModel):
     updated_at: Optional[datetime] = None
     paper_count: int = 0
     idea_count: int = 0
+    method_version_count: int = 0
+    experiment_count: int = 0
+    manuscript_count: int = 0
     papers: List[PaperBrief] = []
     research_ideas: List[IdeaBrief] = []

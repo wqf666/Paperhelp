@@ -127,15 +127,23 @@ def export_project_backup(project_id: int, db: Session = Depends(get_db)):
             rev_data.append(r_dict)
         zf.writestr("reviewers.json", json.dumps(rev_data, indent=2, ensure_ascii=False))
 
-        # Manuscript sections
+        # Manuscript state + sections (full data)
         manuscript = db.query(ManuscriptState).filter(ManuscriptState.project_id == project_id).first()
         if manuscript:
             sections = db.query(ManuscriptSection).filter(
-                ManuscriptSection.manuscript_id == manuscript.id
+                ManuscriptSection.manuscript_state_id == manuscript.id
             ).all()
             ms_data = {
-                "status": manuscript.status if hasattr(manuscript, 'status') else None,
-                "sections": []
+                "title": manuscript.title or "",
+                "abstract": manuscript.abstract or "",
+                "contributions": manuscript.contributions if isinstance(manuscript.contributions, list) else [],
+                "outline": manuscript.outline if isinstance(manuscript.outline, list) else [],
+                "current_draft": manuscript.current_draft or "",
+                "compliance_status": manuscript.compliance_status or "unchecked",
+                "compliance_details": manuscript.compliance_details if isinstance(manuscript.compliance_details, list) else [],
+                "method_version": manuscript.method_version,
+                "unresolved_issues": manuscript.unresolved_issues if isinstance(manuscript.unresolved_issues, list) else [],
+                "sections": [],
             }
             for s in sections:
                 s_dict = {}
@@ -147,13 +155,18 @@ def export_project_backup(project_id: int, db: Session = Depends(get_db)):
                 ms_data["sections"].append(s_dict)
             zf.writestr("manuscript.json", json.dumps(ms_data, indent=2, ensure_ascii=False))
 
-        # Upload files
+        # Upload files — only include files belonging to this project's papers
         upload_dir = Path(settings.STORAGE_PATH)
-        if upload_dir.exists():
-            for root, dirs, files in os.walk(str(upload_dir)):
-                for file in files:
-                    file_path = Path(root) / file
-                    arcname = f"uploads/{file_path.relative_to(upload_dir)}"
+        project_file_paths = set()
+        for p in papers:
+            if hasattr(p, 'file_path') and p.file_path:
+                project_file_paths.add(p.file_path)
+
+        if upload_dir.exists() and project_file_paths:
+            for rel_path in project_file_paths:
+                file_path = upload_dir / rel_path
+                if file_path.exists() and file_path.is_file():
+                    arcname = f"uploads/{rel_path}"
                     zf.write(str(file_path), arcname)
 
     return {
@@ -233,6 +246,81 @@ async def import_project_backup(file: UploadFile = File(...), db: Session = Depe
             except KeyError:
                 pass
 
+            # Import papers
+            idea_id_map = {}  # old_idea_id -> new_idea_id
+            try:
+                new_ideas = db.query(ResearchIdea).filter(
+                    ResearchIdea.project_id == new_project_id
+                ).all()
+                # Build mapping by name match (since IDs change)
+                for ni in new_ideas:
+                    idea_id_map[ni.name] = ni.id
+            except Exception:
+                pass
+
+            try:
+                papers_data = json.loads(zf.read("papers.json"))
+                for p_dict in papers_data:
+                    paper = Paper(
+                        project_id=new_project_id,
+                        title=p_dict.get("title", ""),
+                        status=p_dict.get("status", "uploaded"),
+                        file_path=p_dict.get("file_path"),
+                    )
+                    db.add(paper)
+            except KeyError:
+                pass
+
+            # Import experiments (linked through ideas)
+            try:
+                exp_data = json.loads(zf.read("experiments.json"))
+                # Build old_idea_id -> new_idea_id mapping from imported ideas
+                ideas_raw = json.loads(zf.read("ideas.json"))
+                old_to_new_idea = {}
+                for old_idea in ideas_raw:
+                    old_name = old_idea.get("name", "")
+                    if old_name in idea_id_map:
+                        old_to_new_idea[old_idea["id"]] = idea_id_map[old_name]
+
+                for exp_dict in exp_data:
+                    old_idea_id = exp_dict.get("idea_id")
+                    new_idea_id = old_to_new_idea.get(old_idea_id)
+                    if new_idea_id:
+                        exp_dict.pop("id", None)
+                        exp_dict["idea_id"] = new_idea_id
+                        exp = ExperimentPlan(**exp_dict)
+                        db.add(exp)
+            except (KeyError, json.JSONDecodeError):
+                pass
+
+            # Import manuscript state and sections
+            try:
+                ms_data = json.loads(zf.read("manuscript.json"))
+                ms_sections = ms_data.get("sections", [])
+                manuscript = ManuscriptState(
+                    project_id=new_project_id,
+                    title=ms_data.get("title", ""),
+                    abstract=ms_data.get("abstract", ""),
+                    contributions=ms_data.get("contributions", []),
+                    outline=ms_data.get("outline", []),
+                    current_draft=ms_data.get("current_draft", ""),
+                    compliance_status=ms_data.get("compliance_status", "unchecked"),
+                    compliance_details=ms_data.get("compliance_details", []),
+                    method_version=ms_data.get("method_version", 1),
+                    unresolved_issues=ms_data.get("unresolved_issues", []),
+                )
+                db.add(manuscript)
+                db.flush()  # Get manuscript.id
+
+                for s_dict in ms_sections:
+                    s_dict.pop("id", None)
+                    s_dict["manuscript_state_id"] = manuscript.id
+                    s_dict.pop("method_version_id", None)  # FK may not map
+                    section = ManuscriptSection(**s_dict)
+                    db.add(section)
+            except (KeyError, json.JSONDecodeError):
+                pass
+
             # Extract upload files
             upload_dir = Path(settings.STORAGE_PATH)
             for name in zf.namelist():
@@ -249,6 +337,20 @@ async def import_project_backup(file: UploadFile = File(...), db: Session = Depe
         "project_id": new_project_id,
         "message": f"Project '{project_data['name']}' imported successfully",
     }
+
+
+@router.get("/download/{filename}")
+def download_backup(filename: str):
+    """Download an exported backup file."""
+    export_dir = Path(settings.EXPORT_PATH) / "backups"
+    file_path = export_dir / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Backup file not found")
+    return FileResponse(
+        str(file_path),
+        media_type="application/octet-stream",
+        filename=filename,
+    )
 
 
 @router.get("/projects/{project_id}/info")

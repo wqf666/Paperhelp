@@ -38,6 +38,19 @@ $env:AR = (Join-Path (Split-Path $clPath) 'lib.exe')
 Write-Host "CC = $env:CC"
 Write-Host "AR = $env:AR"
 
+# Build frontend with static export enabled
+Write-Host ""
+Write-Host "=== Building Frontend (static export) ==="
+Write-Host ""
+$env:BUILD_EXPORT = "true"
+Set-Location "C:\Users\WQF\.qoderworkcn\workspace\mqa84s0wjfc9jiwf\frontend"
+& npx next build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Frontend build failed" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+$env:BUILD_EXPORT = ""
+
 # Run Tauri build
 Write-Host ""
 Write-Host "=== Starting Tauri Build ==="

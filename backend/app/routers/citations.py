@@ -75,6 +75,65 @@ def list_citations(
 
 
 @router.get(
+    "/projects/{project_id}/citations/{citation_id}",
+    response_model=CitationResponse,
+)
+def get_citation_scoped(project_id: int, citation_id: int, db: Session = Depends(get_db)):
+    """Get a single citation (project-scoped)."""
+    service = CitationService()
+    try:
+        citation = service.get_citation(citation_id, db)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Citation not found")
+    if citation.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Citation not found in this project")
+    return citation
+
+
+@router.put(
+    "/projects/{project_id}/citations/{citation_id}",
+    response_model=CitationResponse,
+)
+def update_citation_scoped(
+    project_id: int,
+    citation_id: int,
+    payload: CitationUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update a citation (project-scoped)."""
+    service = CitationService()
+    try:
+        citation = service.get_citation(citation_id, db)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Citation not found")
+    if citation.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Citation not found in this project")
+    try:
+        citation = service.update_citation(
+            citation_id, payload.model_dump(exclude_unset=True), db
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Citation not found")
+    return citation
+
+
+@router.delete(
+    "/projects/{project_id}/citations/{citation_id}",
+)
+def delete_citation_scoped(project_id: int, citation_id: int, db: Session = Depends(get_db)):
+    """Delete a citation (project-scoped)."""
+    service = CitationService()
+    try:
+        citation = service.get_citation(citation_id, db)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Citation not found")
+    if citation.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Citation not found in this project")
+    service.delete_citation(citation_id, db)
+    return {"message": "Deleted"}
+
+
+@router.get(
     "/citations/{citation_id}",
     response_model=CitationResponse,
 )

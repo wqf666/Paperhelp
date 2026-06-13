@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { ResearchIdea } from '@/lib/types';
 import ScoreBar from './ScoreBar';
+import RefinementChat from './RefinementChat';
 
 interface IdeaCardProps {
   idea: ResearchIdea;
@@ -27,6 +28,24 @@ export default function IdeaCard({
   onGenerateExperimentPlan,
   isGeneratingPlan,
 }: IdeaCardProps) {
+  const [appliedContent, setAppliedContent] = useState<string | null>(null);
+
+  // Build a structured content string from the idea's key fields for refinement
+  const ideaContent = [
+    `名称: ${idea.name}`,
+    `研究空白: ${idea.research_gap}`,
+    `建议方案: ${idea.proposed_solution}`,
+    idea.expected_contributions.length > 0
+      ? `预期贡献: ${idea.expected_contributions.join('; ')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const handleApplyRefinement = (newContent: string) => {
+    setAppliedContent(newContent);
+  };
+
   return (
     <div className="card p-5">
       {/* Header */}
@@ -89,6 +108,27 @@ export default function IdeaCard({
         </div>
       )}
 
+      {/* Applied refinement result */}
+      {appliedContent && (
+        <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between mb-1.5">
+            <h5 className="text-xs font-medium text-blue-700">AI 调整后的内容</h5>
+            <button
+              onClick={() => setAppliedContent(null)}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              收起
+            </button>
+          </div>
+          <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {appliedContent}
+          </p>
+          <p className="text-[10px] text-gray-400 mt-2">
+            请手动复制上述内容以替换原有字段
+          </p>
+        </div>
+      )}
+
       {/* Action Button */}
       {onGenerateExperimentPlan && (
         <button
@@ -124,6 +164,14 @@ export default function IdeaCard({
           )}
         </button>
       )}
+
+      {/* AI Refinement Chat */}
+      <RefinementChat
+        content={ideaContent}
+        contentType="idea"
+        onApply={handleApplyRefinement}
+        placeholder="例如：让方案更具创新性，或补充可行性分析..."
+      />
     </div>
   );
 }

@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import useSWR, { mutate } from 'swr';
 import { api } from '@/lib/api';
-import type { ResearchIdea } from '@/lib/types';
+import type { ResearchIdea, Paper } from '@/lib/types';
 import IdeaCard from '@/components/IdeaCard';
 import ComplianceBanner from '@/components/ComplianceBanner';
 
@@ -21,6 +21,9 @@ export default function IdeasPage() {
   const [checkingDiffIdeaId, setCheckingDiffIdeaId] = useState<number | null>(null);
   const [diffResults, setDiffResults] = useState<Record<number, any>>({});
   const [expandedDiffIdeaId, setExpandedDiffIdeaId] = useState<number | null>(null);
+  const [confirmDeleteIdeaId, setConfirmDeleteIdeaId] = useState<number | null>(null);
+  const [deletingIdeaId, setDeletingIdeaId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     research_field: '',
@@ -36,8 +39,26 @@ export default function IdeasPage() {
     () => api.listIdeas(projectId)
   );
 
+  // Fetch papers for this project to show status
+  const { data: papers } = useSWR<Paper[]>(
+    projectId ? `papers-${projectId}` : null,
+    () => api.listPapers(projectId)
+  );
+
+  // Compute paper analysis stats
+  const paperStats = useMemo(() => {
+    if (!papers || papers.length === 0) return { total: 0, analyzed: 0, unanalyzed: 0 };
+    const analyzed = papers.filter(
+      (p) => p.status === 'analyzed' || (p as any).paper_card != null
+    ).length;
+    return { total: papers.length, analyzed, unanalyzed: papers.length - analyzed };
+  }, [papers]);
+
+  const hasAnalyzedPapers = paperStats.analyzed > 0;
+
   const handleGenerateIdeas = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasAnalyzedPapers) return;
     setIsGenerating(true);
     setGenerateError(null);
 
@@ -61,12 +82,13 @@ export default function IdeasPage() {
 
   const handleGenerateExperimentPlan = async (ideaId: number) => {
     setGeneratingPlanIdeaId(ideaId);
+    setActionError(null);
 
     try {
       await api.generateExperimentPlan(ideaId);
       mutate(`ideas-${projectId}`);
     } catch (err: any) {
-      alert('生成实验计划失败: ' + (err.message || '未知错误'));
+      setActionError('生成实验计划失败: ' + (err.message || '未知错误'));
     } finally {
       setGeneratingPlanIdeaId(null);
     }
@@ -74,14 +96,29 @@ export default function IdeasPage() {
 
   const handleDifferentiationCheck = async (ideaId: number) => {
     setCheckingDiffIdeaId(ideaId);
+    setActionError(null);
     try {
       const result = await api.checkDifferentiation(ideaId);
       setDiffResults((prev) => ({ ...prev, [ideaId]: result }));
       setExpandedDiffIdeaId(ideaId);
     } catch (err: any) {
-      alert('差异性检查失败: ' + (err.message || '未知错误'));
+      setActionError('差异性检查失败: ' + (err.message || '未知错误'));
     } finally {
       setCheckingDiffIdeaId(null);
+    }
+  };
+
+  const handleDeleteIdea = async (ideaId: number) => {
+    setDeletingIdeaId(ideaId);
+    setActionError(null);
+    try {
+      await api.deleteIdea(ideaId);
+      mutate(`ideas-${projectId}`);
+      setConfirmDeleteIdeaId(null);
+    } catch (err: any) {
+      setActionError('删除创新方向失败: ' + (err.message || '未知错误'));
+    } finally {
+      setDeletingIdeaId(null);
     }
   };
 
@@ -149,24 +186,89 @@ export default function IdeasPage() {
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-900">创新方向</h2>
         <p className="text-sm text-gray-500 mt-1">
-          基于项目论文分析，发现潜在的研究创新点
+          基于论文库中上传的论文分析，发现潜在的研究创新点
         </p>
       </div>
 
+      {/* Paper Status Banner */}
+      {paperStats.total === 0 ? (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <h4 className="text-sm font-medium text-blue-800 mb-1">请先上传论文</h4>
+              <p className="text-xs text-blue-600 leading-relaxed">
+                创新方向的生成基于论文库中上传并分析过的论文。请先前往论文库上传相关领域论文，并进行 AI 分析，再回来生成创新方向。
+              </p>
+              <Link
+                href={`/projects/${projectId}/papers`}
+                className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-blue-700 hover:text-blue-900 transition-colors"
+              >
+                前往论文库
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : paperStats.analyzed === 0 ? (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-100 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div>
+              <h4 className="text-sm font-medium text-amber-800 mb-1">论文尚未分析</h4>
+              <p className="text-xs text-amber-600 leading-relaxed">
+                论文库中已有 {paperStats.total} 篇论文，但尚未进行 AI 分析。请先对论文进行分析，AI 将从论文内容中提炼研究空白和局限性，据此生成创新方向。
+              </p>
+              <Link
+                href={`/projects/${projectId}/papers`}
+                className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-amber-700 hover:text-amber-900 transition-colors"
+              >
+                前往分析论文
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 p-3 bg-green-50 border border-green-100 rounded-lg flex items-center gap-3">
+          <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <p className="text-xs text-green-700">
+            已分析 <span className="font-semibold">{paperStats.analyzed}</span> 篇论文
+            {paperStats.unanalyzed > 0 && (
+              <span className="text-green-500 ml-1">（另有 {paperStats.unanalyzed} 篇待分析）</span>
+            )}
+            <span className="mx-1">·</span>
+            AI 将从这些论文的研究空白和局限性出发，生成创新方向
+          </p>
+        </div>
+      )}
+
       {/* Generate Form */}
       <div className="card p-5 mb-8">
-        <h3 className="text-sm font-medium text-gray-900 mb-4">
+        <h3 className="text-sm font-medium text-gray-900 mb-1">
           生成创新方向
         </h3>
+        <p className="text-xs text-gray-500 mb-4">
+          AI 将分析论文库中已分析的论文，识别研究空白，生成 2-3 个创新方向
+        </p>
         <form onSubmit={handleGenerateIdeas} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              研究方向 <span className="text-red-500">*</span>
+              研究方向 <span className="text-gray-400 font-normal">(可选，补充说明你的研究侧重)</span>
             </label>
             <input
               type="text"
-              required
-              placeholder="例如：大语言模型的幻觉问题、多模态融合"
+              placeholder="例如：大语言模型的幻觉问题、多模态融合（不填则自动从论文中推断）"
               className="input-field"
               value={formData.research_field}
               onChange={(e) =>
@@ -201,8 +303,8 @@ export default function IdeasPage() {
 
           <button
             type="submit"
-            disabled={isGenerating || !formData.research_field.trim()}
-            className="btn-primary text-sm"
+            disabled={isGenerating || !hasAnalyzedPapers}
+            className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGenerating ? (
               <span className="flex items-center gap-1">
@@ -227,6 +329,8 @@ export default function IdeasPage() {
                 </svg>
                 生成中...
               </span>
+            ) : !hasAnalyzedPapers ? (
+              '请先上传并分析论文'
             ) : (
               '生成创新方向'
             )}
@@ -292,8 +396,28 @@ export default function IdeasPage() {
           </div>
           <p className="text-sm text-gray-600 mb-2">还没有创新方向</p>
           <p className="text-xs text-gray-400">
-            在上方表单中输入研究方向，生成创新点
+            {hasAnalyzedPapers
+              ? '点击上方按钮，AI 将根据已分析的论文生成创新方向'
+              : '请先上传并分析论文，再生成创新方向'}
           </p>
+        </div>
+      )}
+
+      {/* Action Error Message */}
+      {actionError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2">
+          <svg className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-xs text-red-700 flex-1">{actionError}</p>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-red-400 hover:text-red-600 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -303,6 +427,8 @@ export default function IdeasPage() {
           {ideas.map((idea) => {
             const diffResult = diffResults[idea.id];
             const isDiffExpanded = expandedDiffIdeaId === idea.id;
+            const isDeleting = deletingIdeaId === idea.id;
+            const isConfirming = confirmDeleteIdeaId === idea.id;
 
             return (
               <div key={idea.id}>
@@ -312,7 +438,7 @@ export default function IdeasPage() {
                   isGeneratingPlan={generatingPlanIdeaId === idea.id}
                 />
 
-                {/* Differentiation Check Button */}
+                {/* Action Buttons Row */}
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     onClick={() => handleDifferentiationCheck(idea.id)}
@@ -341,6 +467,46 @@ export default function IdeasPage() {
                       {isDiffExpanded ? '收起结果' : '查看结果'}
                     </button>
                   )}
+
+                  {/* Delete Button */}
+                  <div className="ml-auto">
+                    {isConfirming ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-600">确认删除?</span>
+                        <button
+                          onClick={() => handleDeleteIdea(idea.id)}
+                          disabled={isDeleting}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded transition-colors disabled:opacity-50"
+                        >
+                          {isDeleting ? (
+                            <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          ) : (
+                            '删除'
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteIdeaId(null)}
+                          disabled={isDeleting}
+                          className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 rounded transition-colors"
+                        >
+                          取消
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteIdeaId(idea.id)}
+                        className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                        title="删除"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Differentiation Results */}

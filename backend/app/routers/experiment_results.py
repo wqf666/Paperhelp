@@ -42,6 +42,10 @@ async def upload_experiment_result(
     if not method_version:
         raise HTTPException(status_code=404, detail="Method version not found")
 
+    # Verify the method version belongs to this project
+    if method_version.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Method version not found in this project")
+
     storage = LocalStorage()
     file_content = await file.read()
     file_path = storage.save(file.filename or "experiment_result", file_content)
@@ -128,3 +132,16 @@ def get_analysis(result_id: int, db: Session = Depends(get_db)):
     if not analysis:
         raise HTTPException(status_code=404, detail="Analysis not found")
     return analysis
+
+
+@router.delete("/experiment-results/{result_id}", status_code=204)
+def delete_experiment_result(result_id: int, db: Session = Depends(get_db)):
+    """Delete an experiment result and its analysis."""
+    result = (
+        db.query(ExperimentResult).filter(ExperimentResult.id == result_id).first()
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Experiment result not found")
+    db.delete(result)
+    db.commit()
+    return None

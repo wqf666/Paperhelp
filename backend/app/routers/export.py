@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -173,3 +174,18 @@ def get_export_record(export_id: int, db: Session = Depends(get_db)):
     if not record:
         raise HTTPException(status_code=404, detail="Export record not found")
     return record
+
+
+@router.get("/exports/{export_id}/download")
+def download_export(export_id: int, db: Session = Depends(get_db)):
+    """Download the generated file for a given export record."""
+    record = db.query(ExportRecord).filter(ExportRecord.id == export_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Export record not found")
+    if not record.file_path or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Export file not found")
+    return FileResponse(
+        record.file_path,
+        filename=record.file_name or "export",
+        media_type="application/octet-stream",
+    )

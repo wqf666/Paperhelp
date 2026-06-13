@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import useSWR, { mutate } from 'swr';
 import { api } from '@/lib/api';
-import type { ReviewerSimulation } from '@/lib/types';
+import type { ReviewerSimulation, Paper, ManuscriptState } from '@/lib/types';
 import ReviewerCard from '@/components/ReviewerCard';
 import ComplianceBanner from '@/components/ComplianceBanner';
 
@@ -16,6 +16,9 @@ export default function ReviewerPage() {
   const [numReviewers, setNumReviewers] = useState(3);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   const {
     data: simulations,
@@ -24,6 +27,18 @@ export default function ReviewerPage() {
   } = useSWR<ReviewerSimulation[]>(
     projectId ? `reviewer-simulations-${projectId}` : null,
     () => api.listReviewerSimulations(projectId)
+  );
+
+  const { data: papers } = useSWR(
+    projectId ? `papers-${projectId}` : null,
+    () => api.listPapers(projectId),
+    { onError: () => {} }
+  );
+
+  const { data: manuscript } = useSWR(
+    projectId ? `manuscript-${projectId}` : null,
+    () => api.getManuscript(projectId),
+    { onError: () => {} }
   );
 
   const handleGenerate = async () => {
@@ -39,6 +54,26 @@ export default function ReviewerPage() {
       setIsGenerating(false);
     }
   };
+
+  const handleClear = async () => {
+    setIsClearing(true);
+    setClearError(null);
+    try {
+      await api.deleteReviewerSimulations(projectId);
+      mutate(`reviewer-simulations-${projectId}`);
+      setShowClearConfirm(false);
+    } catch (err: any) {
+      setClearError(err.message || '清除失败');
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  // Check prerequisites for reviewer simulation
+  const analyzedPapers = papers?.filter((p: any) => p.status === 'analyzed') || [];
+  const hasAnalyzedPapers = analyzedPapers.length > 0;
+  const hasManuscriptOutline = manuscript?.outline && manuscript.outline.length > 0;
+  const canGenerateReview = hasAnalyzedPapers || hasManuscriptOutline;
 
   const tabs = [
     { name: '概览', href: `/projects/${projectId}` },
@@ -105,6 +140,70 @@ export default function ReviewerPage() {
         <h3 className="text-sm font-medium text-gray-900 mb-4">
           生成审稿意见
         </h3>
+
+        {/* Prerequisite Check */}
+        {!canGenerateReview && !isLoading && (
+          <div className="mb-4 p-4 bg-amber-50 border border-amber-100 rounded-lg">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <div>
+                <h4 className="text-sm font-medium text-amber-800 mb-1">尚不满足审稿模拟条件</h4>
+                <p className="text-xs text-amber-600 leading-relaxed mb-2">
+                  审稿模拟需要基于已分析的论文内容或完善的论文大纲来进行。请至少满足以下条件之一：
+                </p>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${hasAnalyzedPapers ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                      {hasAnalyzedPapers ? '✓' : '○'}
+                    </span>
+                    <span className="text-xs text-gray-700">上传并分析至少一篇论文</span>
+                    {!hasAnalyzedPapers && (
+                      <Link
+                        href={`/projects/${projectId}/papers`}
+                        className="text-xs text-amber-700 hover:text-amber-900 font-medium"
+                      >
+                        前往论文库 →
+                      </Link>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${hasManuscriptOutline ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                      {hasManuscriptOutline ? '✓' : '○'}
+                    </span>
+                    <span className="text-xs text-gray-700">完成论文大纲的生成与编辑</span>
+                    {!hasManuscriptOutline && (
+                      <Link
+                        href={`/projects/${projectId}/manuscript`}
+                        className="text-xs text-amber-700 hover:text-amber-900 font-medium"
+                      >
+                        前往论文大纲 →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Prerequisites met indicator */}
+        {canGenerateReview && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-100 rounded-lg flex items-center gap-3">
+            <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-xs text-green-700">
+              {hasAnalyzedPapers && <span>已分析 <span className="font-semibold">{analyzedPapers.length}</span> 篇论文</span>}
+              {hasAnalyzedPapers && hasManuscriptOutline && <span className="mx-1">·</span>}
+              {hasManuscriptOutline && <span>论文大纲已就绪</span>}
+              <span className="mx-1">·</span>
+              可以开始审稿模拟
+            </p>
+          </div>
+        )}
+
         <div className="flex items-end gap-4">
           <div className="w-40">
             <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -124,8 +223,8 @@ export default function ReviewerPage() {
           </div>
           <button
             onClick={handleGenerate}
-            disabled={isGenerating}
-            className="btn-primary text-sm"
+            disabled={isGenerating || !canGenerateReview}
+            className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGenerating ? (
               <span className="flex items-center gap-1">
@@ -143,10 +242,45 @@ export default function ReviewerPage() {
               '开始生成'
             )}
           </button>
+
+          {simulations && simulations.length > 0 && (
+            <div className="flex items-center gap-2 ml-auto">
+              {!showClearConfirm ? (
+                <button
+                  onClick={() => setShowClearConfirm(true)}
+                  disabled={isClearing || isGenerating}
+                  className="btn-secondary text-sm text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50"
+                >
+                  清除全部
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">确认清除所有审稿意见？</span>
+                  <button
+                    onClick={handleClear}
+                    disabled={isClearing}
+                    className="text-xs px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {isClearing ? '清除中...' : '确认清除'}
+                  </button>
+                  <button
+                    onClick={() => setShowClearConfirm(false)}
+                    disabled={isClearing}
+                    className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+                  >
+                    取消
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {generateError && (
           <p className="text-xs text-red-600 mt-3">{generateError}</p>
+        )}
+        {clearError && (
+          <p className="text-xs text-red-600 mt-3">{clearError}</p>
         )}
       </div>
 
@@ -186,7 +320,9 @@ export default function ReviewerPage() {
           </div>
           <p className="text-sm text-gray-600 mb-2">还没有审稿意见</p>
           <p className="text-xs text-gray-400">
-            点击"开始生成"获取 AI 模拟审稿意见
+            {canGenerateReview
+              ? '点击"开始生成"获取 AI 模拟审稿意见'
+              : '请先上传并分析论文，或完善论文大纲后再进行审稿模拟'}
           </p>
         </div>
       )}

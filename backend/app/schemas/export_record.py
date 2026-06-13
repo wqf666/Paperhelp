@@ -1,11 +1,11 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ExportRecordResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int
     project_id: int
@@ -18,6 +18,6 @@ class ExportRecordResponse(BaseModel):
     status: str = "generating"
     error_message: str = ""
     compilation_log: str = ""
-    export_metadata: dict = {}
+    export_metadata: dict = Field(default_factory=dict, alias="metadata_")
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

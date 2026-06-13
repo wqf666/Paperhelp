@@ -47,42 +47,68 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * Parse a response body based on its content-type header.
+ * - application/json → response.json()
+ * - text/* → response.text()
+ * - 204 / no content → undefined
+ */
+async function parseResponse(response: Response): Promise<any> {
+  if (response.status === 204) {
+    return undefined;
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  if (contentType.includes('text/') || contentType.includes('text/plain')) {
+    return response.text();
+  }
+
+  // Fallback: try JSON, then text
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const fullUrl = `${getApiBase()}${url}`;
 
-  const defaultHeaders: HeadersInit = {
-    'Content-Type': 'application/json',
+  // Only set Content-Type: application/json when the body is NOT FormData.
+  // For FormData the browser auto-sets multipart/form-data with the correct boundary.
+  const isFormData = options?.body instanceof FormData;
+
+  const headers: Record<string, string> = {
+    ...(options?.headers as Record<string, string> || {}),
   };
+
+  if (!isFormData && !headers['Content-Type'] && options?.body) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   const config: RequestInit = {
     ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options?.headers,
-    },
+    headers,
   };
 
   const response = await fetch(fullUrl, config);
 
   if (!response.ok) {
-    let errorBody: any;
-    try {
-      errorBody = await response.json();
-    } catch {
-      errorBody = await response.text();
-    }
+    const errorBody = await parseResponse(response);
     throw new ApiError(response.status, response.statusText, errorBody);
   }
 
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json();
+  return parseResponse(response) as Promise<T>;
 }
 
 export const api = {
-  // Projects
+  // ─── Projects ───
   createProject: (data: {
     name: string;
     description?: string;
@@ -98,7 +124,13 @@ export const api = {
 
   getProject: (id: number) => request<Project>(`/projects/${id}`),
 
-  // Papers
+  updateProject: (id: number, data: { name?: string; description?: string; target_field?: string; target_venue?: string }) =>
+    request<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  deleteProject: (id: number): Promise<void> =>
+    request<void>(`/projects/${id}`, { method: 'DELETE' }),
+
+  // ─── Papers ───
   addPaper: (
     projectId: number,
     data: {
@@ -123,10 +155,13 @@ export const api = {
       method: 'POST',
     }),
 
+  deletePaper: (paperId: number): Promise<void> =>
+    request<void>(`/papers/${paperId}`, { method: 'DELETE' }),
+
   getPaperCard: (paperId: number) =>
     request<PaperCardType>(`/papers/${paperId}/card`),
 
-  // Ideas
+  // ─── Ideas ───
   generateIdeas: (
     projectId: number,
     data: {
@@ -142,7 +177,10 @@ export const api = {
   listIdeas: (projectId: number) =>
     request<ResearchIdea[]>(`/projects/${projectId}/ideas`),
 
-  // Experiment Plans
+  deleteIdea: (ideaId: number): Promise<void> =>
+    request<void>(`/ideas/${ideaId}`, { method: 'DELETE' }),
+
+  // ─── Experiment Plans ───
   generateExperimentPlan: (ideaId: number) =>
     request<ExperimentPlan>(`/ideas/${ideaId}/experiment-plan/generate`, {
       method: 'POST',
@@ -151,7 +189,7 @@ export const api = {
   getExperimentPlan: (ideaId: number) =>
     request<ExperimentPlan>(`/ideas/${ideaId}/experiment-plan`),
 
-  // Manuscript
+  // ─── Manuscript ───
   generateManuscriptOutline: (
     projectId: number,
     data?: {
@@ -166,11 +204,16 @@ export const api = {
   getManuscript: (projectId: number) =>
     request<ManuscriptState>(`/projects/${projectId}/manuscript`),
 
-  // PDF Upload & Chunks
+  updateManuscript: (projectId: number, data: { title?: string; abstract?: string; contributions?: string[] }) =>
+    request<ManuscriptState>(`/projects/${projectId}/manuscript`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // ─── PDF Upload & Chunks ───
   uploadPaperPdf: (projectId: number, formData: FormData) =>
     request<Paper>(`/projects/${projectId}/papers/upload`, {
       method: 'POST',
-      headers: {}, // Let browser set Content-Type for FormData
       body: formData,
     }),
   getPaperChunks: (paperId: number) =>
@@ -178,11 +221,11 @@ export const api = {
   reparsePaper: (paperId: number) =>
     request<{ message: string; status: string }>(`/papers/${paperId}/reparse`, { method: 'POST' }),
 
-  // Evidence Spans
+  // ─── Evidence Spans ───
   getEvidenceSpans: (paperId: number) =>
     request<EvidenceSpan[]>(`/papers/${paperId}/card/evidence-spans`),
 
-  // Method Versions
+  // ─── Method Versions ───
   createMethodVersion: (projectId: number, data: { name: string; description?: string; key_changes?: string[]; rationale?: string; based_on_idea_id?: number; parent_version_id?: number }) =>
     request<MethodVersion>(`/projects/${projectId}/method-versions`, { method: 'POST', body: JSON.stringify(data) }),
   listMethodVersions: (projectId: number) =>
@@ -193,12 +236,15 @@ export const api = {
     request<MethodVersion>(`/projects/${projectId}/method-versions/${versionId}`, { method: 'PUT', body: JSON.stringify(data) }),
   archiveMethodVersion: (projectId: number, versionId: number) =>
     request<MethodVersion>(`/projects/${projectId}/method-versions/${versionId}/archive`, { method: 'POST' }),
+  activateMethodVersion: (projectId: number, versionId: number) =>
+    request<MethodVersion>(`/projects/${projectId}/method-versions/${versionId}/activate`, { method: 'POST' }),
+  deleteMethodVersion: (projectId: number, versionId: number): Promise<void> =>
+    request<void>(`/projects/${projectId}/method-versions/${versionId}`, { method: 'DELETE' }),
 
-  // Experiment Results
+  // ─── Experiment Results ───
   uploadExperimentResult: (projectId: number, formData: FormData) =>
     request<ExperimentResult>(`/projects/${projectId}/experiment-results/upload`, {
       method: 'POST',
-      headers: {},
       body: formData,
     }),
   listExperimentResults: (projectId: number) =>
@@ -210,7 +256,10 @@ export const api = {
   getResultsAnalysis: (resultId: number) =>
     request<ResultsAnalysis>(`/experiment-results/${resultId}/analysis`),
 
-  // Reviewer Simulation
+  deleteExperimentResult: (resultId: number): Promise<void> =>
+    request<void>(`/experiment-results/${resultId}`, { method: 'DELETE' }),
+
+  // ─── Reviewer Simulation ───
   generateReviewerSimulation: (projectId: number, numReviewers?: number) =>
     request<ReviewerSimulation[]>(`/projects/${projectId}/reviewer-simulation/generate`, {
       method: 'POST',
@@ -219,22 +268,51 @@ export const api = {
   listReviewerSimulations: (projectId: number) =>
     request<ReviewerSimulation[]>(`/projects/${projectId}/reviewer-simulations`),
 
-  // Differentiation Check
+  deleteReviewerSimulations: (projectId: number): Promise<void> =>
+    request<void>(`/projects/${projectId}/reviewer-simulations`, { method: 'DELETE' }),
+
+  // ─── Differentiation Check ───
   checkDifferentiation: (ideaId: number) =>
     request<any>(`/ideas/${ideaId}/differentiation-check`, { method: 'POST' }),
 
-  // Manuscript Sections
+  // ─── Manuscript Sections ───
   getManuscriptSections: (projectId: number) =>
     request<ManuscriptSection[]>(`/projects/${projectId}/manuscript/sections`),
-  updateManuscriptSection: (sectionId: number, data: { title?: string; content?: string; status?: string }) =>
+
+  createManuscriptSection: (projectId: number, data: any): Promise<ManuscriptSection> =>
+    request<ManuscriptSection>(`/projects/${projectId}/manuscript/sections`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateManuscriptSection: (sectionId: number, data: { title?: string; content?: string; generated_content?: string; status?: string }) =>
     request<ManuscriptSection>(`/manuscript-sections/${sectionId}`, { method: 'PUT', body: JSON.stringify(data) }),
 
-  // ─── Citations ───
-  importBibtex: (projectId: number, bibtex: string): Promise<Citation[]> =>
-    request<Citation[]>(`/projects/${projectId}/citations/import-bibtex`, {
-      method: 'POST',
-      body: JSON.stringify({ bibtex }),
+  deleteManuscriptSection: (sectionId: number): Promise<void> =>
+    request<void>(`/manuscript-sections/${sectionId}`, {
+      method: 'DELETE',
     }),
+
+  reorderManuscriptSections: (projectId: number, sectionIds: number[]): Promise<ManuscriptSection[]> => {
+    // Convert number[] to the array-of-objects format the backend expects
+    const body = sectionIds.map((id, index) => ({ id, sort_order: index }));
+    return request<ManuscriptSection[]>(`/projects/${projectId}/manuscript/sections/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+
+  // ─── Citations ───
+  importBibtex: (projectId: number, bibtex: string): Promise<Citation[]> => {
+    // Send BibTeX text as a file via FormData (backend expects UploadFile)
+    const blob = new Blob([bibtex], { type: 'application/x-bibtex' });
+    const fd = new FormData();
+    fd.append('file', blob, 'import.bib');
+    return request<Citation[]>(`/projects/${projectId}/citations/import-bibtex`, {
+      method: 'POST',
+      body: fd,
+    });
+  },
 
   createCitation: (projectId: number, data: any): Promise<Citation> =>
     request<Citation>(`/projects/${projectId}/citations`, {
@@ -262,6 +340,7 @@ export const api = {
     }),
 
   exportBibtex: (projectId: number): Promise<string> =>
+    // Backend returns text/plain, request() now handles this correctly
     request<string>(`/projects/${projectId}/citations/export-bibtex`),
 
   // ─── Templates ───
@@ -277,60 +356,56 @@ export const api = {
   exportDocx: (projectId: number, data?: any): Promise<ExportRecord> =>
     request<ExportRecord>(`/projects/${projectId}/export/docx`, {
       method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+      body: JSON.stringify(data || {}),
     }),
 
   exportLatex: (projectId: number, data?: any): Promise<ExportRecord> =>
     request<ExportRecord>(`/projects/${projectId}/export/latex`, {
       method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+      body: JSON.stringify(data || {}),
     }),
 
-  exportCoverLetter: (projectId: number, data: any): Promise<any> =>
-    request<any>(`/projects/${projectId}/export/cover-letter`, {
+  exportCoverLetter: (projectId: number, data: any): Promise<ExportRecord> =>
+    request<ExportRecord>(`/projects/${projectId}/export/cover-letter`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  exportResponseLetter: (projectId: number, data?: any): Promise<any> =>
-    request<any>(`/projects/${projectId}/export/response-letter`, {
+  exportResponseLetter: (projectId: number, data?: any): Promise<ExportRecord> =>
+    request<ExportRecord>(`/projects/${projectId}/export/response-letter`, {
       method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+      body: JSON.stringify(data || {}),
     }),
 
-  getExportRecord: (projectId: number, recordId: number): Promise<ExportRecord> =>
-    request<ExportRecord>(`/projects/${projectId}/export/records/${recordId}`),
+  getExportRecord: (recordId: number): Promise<ExportRecord> =>
+    request<ExportRecord>(`/exports/${recordId}`),
+
+  downloadExportUrl: (recordId: number): string =>
+    `${getApiBase()}/exports/${recordId}/download`,
 
   // ─── Converter ───
   convertWordToLatex: (formData: FormData): Promise<any> =>
-    request<any>('/converter/word-to-latex', {
+    request<any>('/convert/word-to-latex', {
       method: 'POST',
       body: formData,
-      headers: {},
     }),
 
-  generateSectionContent: (data: any): Promise<any> =>
-    request<any>('/converter/generate-section', {
+  generateSectionContent: (projectId: number, sectionId: number): Promise<ManuscriptSection> =>
+    request<ManuscriptSection>(`/projects/${projectId}/manuscript/sections/${sectionId}/generate-content`, {
+      method: 'POST',
+    }),
+
+  // ─── Refine ───
+  refineContent: (data: { content: string; instruction: string; content_type?: string; history?: any[] }) =>
+    request<{ refined_content: string; assistant_message: string }>('/refine', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  // ─── Manuscript Sections (extended) ───
-  createManuscriptSection: (projectId: number, data: any): Promise<ManuscriptSection> =>
-    request<ManuscriptSection>(`/projects/${projectId}/sections`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  deleteManuscriptSection: (sectionId: number): Promise<void> =>
-    request<void>(`/sections/${sectionId}`, {
-      method: 'DELETE',
-    }),
-
-  reorderManuscriptSections: (projectId: number, sectionIds: number[]): Promise<any> =>
-    request<any>(`/projects/${projectId}/sections/reorder`, {
+  updateManuscriptOutline: (projectId: number, outline: any[]) =>
+    request<any>(`/projects/${projectId}/manuscript/outline`, {
       method: 'PUT',
-      body: JSON.stringify({ section_ids: sectionIds }),
+      body: JSON.stringify({ outline }),
     }),
 
   // ─── Settings ───
@@ -343,6 +418,14 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  getProviders: () =>
+    request<{ providers: any[] }>('/settings/providers'),
+
+  testConnection: () =>
+    request<{ status: string; message: string }>('/settings/test-connection', {
+      method: 'POST',
+    }),
+
   // ─── Backup ───
   exportProjectBackup: (projectId: number) =>
     request<any>(`/backup/projects/${projectId}/export`, {
@@ -352,7 +435,6 @@ export const api = {
   importProjectBackup: (formData: FormData) =>
     request<any>('/backup/import', {
       method: 'POST',
-      headers: {},
       body: formData,
     }),
 

@@ -20,6 +20,10 @@ export default function PapersPage() {
   const [uploadTab, setUploadTab] = useState<'manual' | 'pdf'>('manual');
   const [pdfUploadStatus, setPdfUploadStatus] = useState<string | null>(null);
 
+  // Batch analysis state
+  const [batchAnalyzing, setBatchAnalyzing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number; errors: string[] }>({ done: 0, total: 0, errors: [] });
+
   const [paperForm, setPaperForm] = useState({
     title: '',
     authors: '',
@@ -64,35 +68,51 @@ export default function PapersPage() {
     mutate(`papers-${projectId}`);
   };
 
-  const handlePdfUpload = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    setPdfUploadStatus('解析中...');
-    const result = await api.uploadPaperPdf(projectId, formData);
-    mutate(`papers-${projectId}`);
-    setPdfUploadStatus(`上传成功：${result.title || file.name}，正在解析...`);
-    // Poll for parse completion
-    const pollInterval = setInterval(async () => {
+  const handlePdfUpload = async (files: File[]) => {
+    const total = files.length;
+    let successCount = 0;
+    const errors: string[] = [];
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
       try {
-        const papers = await api.listPapers(projectId);
-        const uploaded = papers.find((p) => p.id === result.id);
-        if (uploaded && uploaded.pdf_parse_status === 'completed') {
-          setPdfUploadStatus(`解析完成：${uploaded.title}`);
-          clearInterval(pollInterval);
-          mutate(`papers-${projectId}`);
-        } else if (uploaded && uploaded.pdf_parse_status === 'failed') {
-          setPdfUploadStatus('解析失败，请重试');
-          clearInterval(pollInterval);
-        }
-      } catch {
-        // ignore poll errors
+        const result = await api.uploadPaperPdf(projectId, formData);
+        successCount++;
+        setPdfUploadStatus(`上传中... ${successCount}/${total}`);
+      } catch (err: any) {
+        errors.push(`${file.name}: ${err.message || '上传失败'}`);
       }
-    }, 3000);
-    // Stop polling after 2 minutes
-    setTimeout(() => {
-      clearInterval(pollInterval);
-    }, 120000);
+    }
+    mutate(`papers-${projectId}`);
+    if (errors.length > 0) {
+      setPdfUploadStatus(`完成 ${successCount}/${total}，${errors.length} 个失败`);
+    } else {
+      setPdfUploadStatus(`成功上传 ${successCount} 个文件`);
+    }
   };
+
+  const handleBatchAnalyze = async () => {
+    if (!papers) return;
+    const unanalyzed = papers.filter((p) => p.status !== 'analyzed');
+    if (unanalyzed.length === 0) return;
+    setBatchAnalyzing(true);
+    setBatchProgress({ done: 0, total: unanalyzed.length, errors: [] });
+    const errors: string[] = [];
+    let done = 0;
+    for (const paper of unanalyzed) {
+      try {
+        await api.analyzePaper(paper.id);
+      } catch (err: any) {
+        errors.push(`${paper.title}: ${err.message || '分析失败'}`);
+      }
+      done++;
+      setBatchProgress({ done, total: unanalyzed.length, errors });
+    }
+    mutate(`papers-${projectId}`);
+    setBatchAnalyzing(false);
+  };
+
+  const unanalyzedCount = papers ? papers.filter((p) => p.status !== 'analyzed').length : 0;
 
   return (
     <div>
@@ -320,7 +340,8 @@ export default function PapersPage() {
                 accept=".pdf"
                 onUpload={handlePdfUpload}
                 label="上传 PDF 文件"
-                description="支持直接上传论文 PDF，系统将自动解析论文内容"
+                description={'支持一次选择多个 PDF 文件上传。上传后可点击「一键分析全部」进行 AI 解析'}
+                multiple
               />
 
               {pdfUploadStatus && (
@@ -415,6 +436,61 @@ export default function PapersPage() {
       {/* Papers List */}
       {!isLoading && !error && papers && papers.length > 0 && (
         <div className="space-y-4">
+          {/* Batch analyze button */}
+          {unanalyzedCount > 0 && (
+            <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+              <span className="text-xs text-amber-700">
+                有 {unanalyzedCount} 篇论文尚未分析
+              </span>
+              <button
+                onClick={handleBatchAnalyze}
+                disabled={batchAnalyzing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white hover:bg-amber-700 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {batchAnalyzing ? (
+                  <>
+                    <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    分析中 {batchProgress.done}/{batchProgress.total}...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    一键分析全部
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Batch progress bar */}
+          {batchAnalyzing && batchProgress.total > 0 && (
+            <div className="w-full bg-gray-200 rounded-full h-1.5">
+              <div
+                className="bg-amber-500 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }}
+              />
+            </div>
+          )}
+
+          {/* Batch analysis errors */}
+          {batchProgress.errors.length > 0 && !batchAnalyzing && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-lg">
+              <p className="text-xs text-red-600 font-medium mb-1">部分论文分析失败：</p>
+              {batchProgress.errors.map((e, i) => (
+                <p key={i} className="text-xs text-red-500">{e}</p>
+              ))}
+            </div>
+          )}
+
           {papers.map((paper) => (
             <PaperCardComponent
               key={paper.id}

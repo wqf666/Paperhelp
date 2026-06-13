@@ -46,6 +46,11 @@ export default function ExperimentsPage() {
   const [analyses, setAnalyses] = useState<Record<number, ResultsAnalysis>>({});
   const [expandedResultId, setExpandedResultId] = useState<number | null>(null);
 
+  // Delete state
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [resultErrors, setResultErrors] = useState<Record<number, string>>({});
+
   const {
     data: ideas,
     error,
@@ -135,14 +140,96 @@ export default function ExperimentsPage() {
 
   const handleAnalyze = async (resultId: number) => {
     setAnalyzingId(resultId);
+    setResultErrors((prev) => {
+      const next = { ...prev };
+      delete next[resultId];
+      return next;
+    });
     try {
       const analysis = await api.analyzeExperimentResult(resultId);
       setAnalyses((prev) => ({ ...prev, [resultId]: analysis }));
     } catch (err: any) {
-      alert('分析失败: ' + (err.message || '未知错误'));
+      setResultErrors((prev) => ({
+        ...prev,
+        [resultId]: '分析失败: ' + (err.message || '未知错误'),
+      }));
     } finally {
       setAnalyzingId(null);
     }
+  };
+
+  const handleDeleteResult = async (resultId: number) => {
+    setDeletingId(resultId);
+    setResultErrors((prev) => {
+      const next = { ...prev };
+      delete next[resultId];
+      return next;
+    });
+    try {
+      await api.deleteExperimentResult(resultId);
+      mutate(`experiment-results-${projectId}`);
+      // Clean up cached analysis for this result
+      setAnalyses((prev) => {
+        const next = { ...prev };
+        delete next[resultId];
+        return next;
+      });
+      if (expandedResultId === resultId) {
+        setExpandedResultId(null);
+      }
+    } catch (err: any) {
+      setResultErrors((prev) => ({
+        ...prev,
+        [resultId]: '删除失败: ' + (err.message || '未知错误'),
+      }));
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  };
+
+  const renderExperimentItem = (item: any, i: number) => {
+    if (typeof item === 'string') {
+      return (
+        <div key={i} className="p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
+          <p>{item}</p>
+        </div>
+      );
+    }
+
+    // Structured experiment object with name, description, expected_outcome
+    return (
+      <div key={i} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+        {item.name && (
+          <h6 className="text-xs font-semibold text-gray-800 mb-2">{item.name}</h6>
+        )}
+        {item.description && (
+          <div className="mb-2">
+            <span className="text-xs font-medium text-gray-500">实验方案：</span>
+            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{item.description}</p>
+          </div>
+        )}
+        {item.expected_outcome && (
+          <div>
+            <span className="text-xs font-medium text-gray-500">预期结果：</span>
+            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{item.expected_outcome}</p>
+          </div>
+        )}
+        {/* Render any remaining fields generically */}
+        {Object.entries(item)
+          .filter(([k]) => !['name', 'description', 'expected_outcome'].includes(k))
+          .map(([key, value]) => (
+            <div key={key} className="mt-2">
+              <span className="text-xs font-medium text-gray-500">
+                {key.replace(/_/g, ' ')}：
+              </span>
+              <p className="text-xs text-gray-600 mt-0.5">
+                {typeof value === 'string' ? value : JSON.stringify(value)}
+              </p>
+            </div>
+          ))}
+      </div>
+    );
   };
 
   const renderList = (items: any[], label: string) => {
@@ -152,20 +239,7 @@ export default function ExperimentsPage() {
       <div className="mb-4">
         <h5 className="text-xs font-medium text-gray-700 mb-2">{label}</h5>
         <div className="space-y-2">
-          {items.map((item, i) => (
-            <div
-              key={i}
-              className="p-3 bg-gray-50 rounded-lg text-xs text-gray-600"
-            >
-              {typeof item === 'string' ? (
-                <p>{item}</p>
-              ) : (
-                <pre className="whitespace-pre-wrap font-sans">
-                  {JSON.stringify(item, null, 2)}
-                </pre>
-              )}
-            </div>
-          ))}
+          {items.map((item, i) => renderExperimentItem(item, i))}
         </div>
       </div>
     );
@@ -381,6 +455,26 @@ export default function ExperimentsPage() {
 
               return (
                 <div key={result.id} className="card p-5">
+                  {/* Inline error for this result */}
+                  {resultErrors[result.id] && (
+                    <div className="mb-3 flex items-center justify-between p-2 bg-red-50 rounded text-xs text-red-600">
+                      <span>{resultErrors[result.id]}</span>
+                      <button
+                        onClick={() =>
+                          setResultErrors((prev) => {
+                            const next = { ...prev };
+                            delete next[result.id];
+                            return next;
+                          })
+                        }
+                        className="text-red-400 hover:text-red-600 ml-2"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
@@ -411,6 +505,51 @@ export default function ExperimentsPage() {
                       >
                         {isExpanded ? '收起' : '展开'}
                       </button>
+                      {confirmDeleteId === result.id ? (
+                        <div className="flex items-center gap-1 ml-1">
+                          <button
+                            onClick={() => handleDeleteResult(result.id)}
+                            disabled={deletingId === result.id}
+                            className="text-xs text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
+                          >
+                            {deletingId === result.id ? '删除中...' : '确认'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="text-xs text-gray-400 hover:text-gray-600"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setResultErrors((prev) => {
+                              const next = { ...prev };
+                              delete next[result.id];
+                              return next;
+                            });
+                            setConfirmDeleteId(result.id);
+                          }}
+                          disabled={deletingId !== null}
+                          className="p-1 text-gray-300 hover:text-gray-500 transition-colors disabled:opacity-50"
+                          title="删除"
+                        >
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   </div>
 
